@@ -1,0 +1,29 @@
+#!/usr/bin/python
+## dec2base76
+# Takes a decimal input and return Base76
+# dec2base76 script
+# Source Code produced by Willtech 2023
+# v0.1 hand coded by HRjJ
+
+#Setup
+
+#Validate Inputs
+
+#Functions
+def to_base(number, base):
+    """Converts a non-negative number to a list of digits in the given base.
+
+    The base must be an integer greater than or equal to 2 and the first digit
+    in the list of digits is the most significant one.
+    """
+    if not number:
+        return [0]
+
+    digits = []
+    while number:
+        digits.append(number % base)
+        number //= base
+    return list(reversed(digits))
+# https://mathspp.com/blog/base-conversion-in-python
+
+#Begin
