@@ -1,5 +1,5 @@
 #!/usr/bin/python
-## 76base2dec
+## base76todec
 # Takes a Base76 input and returns a decimal string (uppercase, no leading 0x)
 # Source Code produced by Willtech 2023
 # v0.2 with input validation
