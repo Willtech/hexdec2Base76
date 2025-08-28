@@ -49,8 +49,8 @@ The Base76 alphabet is fixed and shared across all implementations:
 +------------------+      +-------------------+      +-------------------+
 
 +------------------+      +-------------------+      +-------------------+
-|  hex2base76.c    | ---> | base76alphabet.h | ---> | hexto_base76()   |
-|   - main()       |      |                   |      | base76tohex()   |
+|  hex2base76.c    | ---> | base76alphabet.h  | ---> | hexto_base76()    |
+|   - main()       |      |                   |      | base76tohex()     |
 +------------------+      +-------------------+      +-------------------+
 ```
 
