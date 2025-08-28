@@ -181,6 +181,7 @@ Run Test
 
 ```bash
 cp ./tests/* ./python/ 
+cd ./python
 python3 test_dec_base76.py
 python3 test_hex_base76.py
 ```
