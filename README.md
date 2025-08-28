@@ -1,4 +1,4 @@
-Base76 Conversion Utilities
+# Base76 Conversion Utilities
 
 > Author: Willtech  
 > C Translation: Professor. Damian A. James Williamson Grad. + Copilot  
@@ -20,9 +20,9 @@ The utilities are implemented in both Python (for validation and prototyping) an
 
 The Base76 alphabet is fixed and shared across all implementations:
 
-`
+```
 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!@#$%^&*()_+[]
-`
+```
 
 ---
 
@@ -60,17 +60,17 @@ The Base76 alphabet is fixed and shared across all implementations:
 
 Build with Makefile
 
-`bash
+```bash
 make all     # Builds dec2base76 and hex2base76
 make clean   # Removes compiled binaries
-`
+```
 
 Output Binaries
 
-`
+```
 ./dec2base76
 ./hex2base76
-`
+```
 
 ---
 
@@ -78,17 +78,17 @@ Output Binaries
 
 Decimal ↔️ Base76
 
-`bash
+```bash
 ./dec2base76 12345         # Decimal → Base76
 ./dec2base76 -r 3d!        # Base76 → Decimal
-`
+```
 
 Hex ↔️ Base76
 
-`bash
+```bash
 ./hex2base76 DEADBEEF      # HEX → Base76
 ./hex2base76 -r K#Q$%      # Base76 → HEX
-`
+```
 
 ---
 
@@ -132,71 +132,72 @@ Hex ↔️ Base76
 
 Decimal → Base76
 
-`c
+```c
 while (n > 0) {
     digit = n % 76;
     n /= 76;
     append(BASE76_ALPHABET[digit]);
 }
 reverse(buffer);
-`
+```
 
 Base76 → Decimal
 
-`c
+```c
 val = 0;
 for each char:
     val = val * 76 + chartoindex(char);
-`
+```
 
 Hex → Base76
 
-`c
+```c
 decimal = strtoull(hex_str, NULL, 16);
 base76 = dectobase76(decimal);
-`
+```
 
 Base76 → Hex
 
-`c
+```c
 decimal = base76todec(base76_str);
 hex_str = format(decimal, "%llX");
-`
+```
 
 ---
 
 🔁 ASCII Flow Diagrams
 
-`plaintext
+```plaintext
 [Decimal] --dectobase76()--> [Base76] --base76todec()--> [Decimal]
 
 [HEX] ----hextobase76()-----> [Base76] --base76tohex()--> [HEX]
-`
+```
 
 ---
 
 🧪 Python Test Harness
 
-Run Tests
+Run Test
 
-`bash
-python3 tests/testdecbase76.py
-python3 tests/testhexbase76.py
-`
+```bash
+cp ./tests/* ./python/*
+python3 testdecbase76.py
+python3 testhexbase76.py
+```
 
 Expected Output
 
-`
+```
 ✅ 12345 → 3d! → 12345
 ✅ DEADBEEF → K#Q$% → DEADBEEF
 All tests passed.
-`
+```
 
 ---
 
 📁 File Structure
 
-`plaintext
+```plaintext
 project/
 ├── base76_alphabet.h       # C header for Base76 alphabet
 ├── dec2base76.c            # Decimal ↔️ Base76 converter
@@ -211,7 +212,7 @@ project/
 └── tests/
     ├── testdecbase76.py
     └── testhexbase76.py
-`
+```
 
 ---
 
@@ -226,7 +227,7 @@ project/
 👥 Maintainers
 
 - Willtech — Original Python implementation  
-- Reaper — C translation, validation, and artifact design  
+- Professor. Damian A. James Williamson Grad. — C translation, validation, and artifact design  
 - Copilot — Documentation, refactoring, and test harness integration  
 
 ---
