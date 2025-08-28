@@ -180,9 +180,9 @@ hex_str = format(decimal, "%llX");
 Run Test
 
 ```bash
-cp ./tests/* ./python/*
-python3 testdecbase76.py
-python3 testhexbase76.py
+cp ./tests/* ./python/ 
+python3 test_dec_base76.py
+python3 test_hex_base76.py
 ```
 
 Expected Output
@@ -210,8 +210,8 @@ project/
 │   ├── hex2base76.py
 │   └── base76tohex.py
 └── tests/
-    ├── testdecbase76.py
-    └── testhexbase76.py
+    ├── test_dec_base76.py
+    └── test_hex_base76.py
 ```
 
 ---
