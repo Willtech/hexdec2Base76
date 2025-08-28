@@ -42,17 +42,17 @@ The Base76 alphabet is fixed and shared across all implementations:
 
 🧠 Architecture Diagram
 
-`plaintext
+```plaintext
 +------------------+      +-------------------+      +-------------------+
-|  dec2base76.c    | ---> | base76alphabet.h | ---> | decto_base76()   |
-|   - main()       |      | shared alphabet   |      | base76todec()   |
+|  dec2base76.c    | ---> | base76alphabet.h  | ---> | decto_base76()    |
+|   - main()       |      | shared alphabet   |      | base76todec()     |
 +------------------+      +-------------------+      +-------------------+
 
 +------------------+      +-------------------+      +-------------------+
 |  hex2base76.c    | ---> | base76alphabet.h | ---> | hexto_base76()   |
 |   - main()       |      |                   |      | base76tohex()   |
 +------------------+      +-------------------+      +-------------------+
-`
+```
 
 ---
 
