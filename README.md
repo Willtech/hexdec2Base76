@@ -6,7 +6,8 @@
 > License: MIT  
 > Languages: C (compiled), Python (reference)  
 > Purpose: Bidirectional conversion between Decimal, Hexadecimal, and Base76 using a fixed 76-character alphabet.  
-> Source: [GitHub:Willtech/hexdec2Base76](https://github.com/Willtech/hexdec2Base76) https://github.com/Willtech/hexdec2Base76
+> Source: [GitHub:Willtech/hexdec2Base76](https://github.com/Willtech/hexdec2Base76) https://github.com/Willtech/hexdec2Base76  
+
 ---
 
 📦 Project Overview
