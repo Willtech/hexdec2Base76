@@ -1,0 +1,154 @@
+.\" b76pipe(3) — Base76 7‑bit binary pipeline encoder/decoder
+.\"
+.Dd April 15, 2026
+.Dt B76PIPE 3
+.Os
+.Sh NAME
+.Nm b76pipe
+.Nd reversible Base76 7‑bit binary pipeline encoder/decoder
+.Sh SYNOPSIS
+.Nm
+.Op Fl r
+.Op Fl i Ar infile
+.Op Fl o Ar outfile
+.Op Ar message
+.Sh DESCRIPTION
+The
+.Nm
+utility implements a reversible Base76 transformation pipeline using the
+canonical Willtech Base76 tools:
+.Pp
+.Bl -bullet -compact
+.It
+dec2base76.py
+.It
+base76todec.py
+.It
+hex2base76.py
+.It
+base76tohex.py
+.It
+base76_alphabet.py
+.El
+.Pp
+No Base76 logic is reimplemented in the shell script; all encoding and decoding
+is delegated to the Python tools listed above.
+.Pp
+The pipeline transforms an ASCII message into a layered Base76 representation
+passing through a 7‑bit binary stage, and can reconstruct the original message
+when invoked with the
+.Fl r
+flag.
+
+.Sh FORWARD PIPELINE
+The forward transformation consists of the following stages:
+.Bl -enum
+.It
+ASCII input is converted to hexadecimal and encoded into Base76 using
+.Pa hex2base76.py .
+This produces the canonical Base76 string
+.Em B1 .
+.It
+Each character of
+.Em B1
+is decoded to its integer index (0–75) using
+.Pa base76todec.py .
+Each index is rendered as a 7‑bit binary value.
+.It
+All 7‑bit values are concatenated into a single binary stream and converted into
+literal ASCII characters '0' and '1'.
+.It
+Each ASCII '0' and '1' is mapped to its ASCII code (48 and 49 respectively).
+These decimal values are encoded using
+.Pa dec2base76.py .
+The concatenation of these Base76 encodings forms the final output.
+.El
+
+.Sh REVERSE PIPELINE
+The reverse transformation reconstructs the original message:
+.Bl -enum
+.It
+Each Base76 character in the encoded message is decoded to a decimal value using
+.Pa base76todec.py .
+Valid values are 48 (ASCII '0') and 49 (ASCII '1').
+.It
+The recovered ASCII '0'/'1' characters form a binary stream, which is split into
+7‑bit groups.
+.It
+Each 7‑bit group is converted to a decimal index (0–75) and encoded back into a
+Base76 character using
+.Pa dec2base76.py ,
+reconstructing the original Base76 string
+.Em B1 .
+.It
+.Em B1
+is decoded back to hexadecimal using
+.Pa base76tohex.py
+and converted to ASCII, yielding the original message.
+.El
+
+.Sh OPTIONS
+.Bl -tag -width Ds
+.It Fl r
+Reverse mode. Decode an encoded Base76 bitstream back to the original ASCII
+message.
+.It Fl i Ar infile
+Read input from
+.Ar infile
+instead of the command line.
+.It Fl o Ar outfile
+Write output to
+.Ar outfile
+instead of standard output.
+.El
+
+.Sh EXIT STATUS
+.Bl -tag -width Ds
+.It 0
+Success.
+.It >0
+An error occurred, such as invalid Base76 input, malformed bitstream, or I/O
+failure.
+.El
+
+.Sh EXAMPLES
+Encode a message:
+.Pp
+.Dl $ b76pipe "Hello world"
+.Pp
+Decode a message:
+.Pp
+.Dl $ b76pipe -r "BASE76_ENCODED_DATA"
+.Pp
+Encode from a file:
+.Pp
+.Dl $ b76pipe -i input.txt -o encoded.txt
+.Pp
+Decode from a file:
+.Pp
+.Dl $ b76pipe -r -i encoded.txt -o decoded.txt
+
+.Sh IMPLEMENTATION NOTES
+The script is written for OpenBSD
+.Pa /bin/ksh
+(pdksh) and avoids non‑portable constructs such as
+.Dq for (( ... ))
+and substring slicing. All loops use
+.Xr cut 1
+and
+.Xr bc 1
+for compatibility.
+
+.Sh AUTHOR
+Graduate. Damian Williamson  
+Willtech, Swan Hill, Victoria, Australia.
+
+.Sh CREDITS
+Microsoft Copilot — technical collaboration, commentary, and pipeline design
+assistance.
+
+.Sh SEE ALSO
+.Xr dec2base76.py 1 ,
+.Xr base76todec.py 1 ,
+.Xr hex2base76.py 1 ,
+.Xr base76tohex.py 1
