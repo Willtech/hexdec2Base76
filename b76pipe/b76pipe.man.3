@@ -1,0 +1,152 @@
+.Dd April 15, 2026
+.Dt B76PIPE 3
+.Os
+.Sh NAME
+.Nm b76pipe
+.Nd Base76 streaming pipeline encoder/decoder with optional custom alphabet
+.Sh SYNOPSIS
+.Nm b76pipe
+.Op Fl r
+.Op Fl i Ar infile
+.Op Fl o Ar outfile
+.Op Fl -alpha Ar alphabet_file
+.Op Ar message
+.Pp
+.Nm b76pipe
+.Fl h
+.Pp
+.Nm b76pipe
+.Fl -help
+.Pp
+.Nm b76pipe
+.Fl -version
+.Sh DESCRIPTION
+The
+.Nm
+utility implements a reversible Base76 pipeline using a 7-bit safe alphabet.
+It can operate in forward mode (bytes to Base76 tokens) or reverse mode
+(Base76 tokens to bytes).
+Input may be provided as a message argument or read from a file.
+Output may be written to a file or to standard output.
+.Pp
+By default, the Base76 alphabet is taken from
+.Pa base76_alphabet.h .
+The
+.Fl -alpha
+option allows overriding the alphabet at runtime using an external file.
+.Pp
+The pipeline operates in a streaming fashion and does not load the entire
+input into memory.
+Forward mode processes input byte-by-byte, and reverse mode processes Base76
+tokens one at a time.
+This allows processing of arbitrarily large inputs, limited only by I/O
+capacity.
+.Sh OPTIONS
+.Bl -tag -width Ds
+.It Fl r
+Run the pipeline in reverse mode (Base76 tokens to bytes).
+.It Fl i Ar infile
+Read input from
+.Ar infile .
+When this option is used, any
+.Ar message
+argument is ignored.
+.It Fl o Ar outfile
+Write output to
+.Ar outfile .
+If omitted, output is written to standard output.
+.It Fl -alpha Ar alphabet_file
+Load a custom Base76 alphabet from
+.Ar alphabet_file .
+The file may contain arbitrary content, but only the first 76 unique 7-bit
+characters (ASCII < 128) are used.
+Whitespace characters are ignored, and duplicate characters are skipped.
+If fewer than 76 unique 7-bit characters are found, the program exits with an
+error.
+.It Fl h , Fl -help
+Display a help message and exit.
+.It Fl -version
+Display version information and exit.
+.El
+.Sh ALPHABET
+By default, the Base76 alphabet is:
+.Pp
+.Bd -literal -offset indent
+0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!@#$%^&*()_+[]
+.Ed
+.Pp
+When
+.Fl -alpha
+is used, the alphabet is constructed as follows:
+.Bl -bullet -offset indent
+.It
+Only characters with ASCII value less than 128 are considered.
+.It
+Whitespace characters are ignored.
+.It
+Duplicate characters are ignored.
+.It
+The first 76 unique 7-bit characters encountered form the alphabet.
+.It
+If fewer than 76 unique characters are found, the program terminates with an
+error.
+.El
+.Sh INPUT SIZE
+The
+.Nm
+utility operates as a streaming pipeline and does not load the entire input
+into memory.
+Forward mode processes input byte-by-byte, and reverse mode processes Base76
+tokens one at a time.
+This allows processing of arbitrarily large inputs, limited only by available
+I/O bandwidth and system limits.
+.Sh EXIT STATUS
+The
+.Nm
+utility exits 0 on success and >0 if an error occurs.
+.Pp
+The following exit codes are defined:
+.Bl -tag -width Ds
+.It 1
+General usage error.
+This includes missing arguments, invalid flag combinations, or failure to open
+input or output files.
+.It 2
+Alphabet file error.
+Returned when the file specified with
+.Fl -alpha
+cannot be opened, contains fewer than 76 unique 7-bit characters, or otherwise
+fails validation.
+.It 3
+Invalid Base76 token encountered during reverse mode.
+This includes characters not present in the active alphabet or tokens that
+decode to values outside the byte range (0–255).
+.It 4
+Token length error.
+Returned when a Base76 token in reverse mode exceeds the internal token buffer
+size.
+.It 5
+Internal pipeline error.
+Returned when an unexpected condition occurs during streaming conversion.
+.It 6
+Temporary stream creation failure.
+Returned when the program cannot create an internal temporary stream for
+message input.
+.It 7
+Output write failure.
+Returned when writing to the output stream fails, for example due to disk full
+or I/O errors.
+.El
+.Sh AUTHOR
+Source Code produced by Graduate. Damian Williamson
+.br
+Willtech, Swan Hill, Victoria, Australia. 2023–2026.
+.br
+Compiled pipeline variant based on the hexdec2Base76 project.
+.Sh CREDITS
+Microsoft Copilot — technical collaboration, commentary, and pipeline design
+assistance.
+.Pp
+Converted & annotated with reference header by
+.br
+Professor. Damian A. James Williamson Grad. + Copilot.
