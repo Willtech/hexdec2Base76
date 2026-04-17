@@ -10,7 +10,7 @@ A streaming, character‑by‑character variant of `b76pipe` that emits output c
 
 - **Forward (encode)**: per‑byte Stage‑1 tokens printed to **stderr** when `-v` is used; final encoded output streamed to **stdout** or `-o` file as bytes arrive.  
 - **Reverse (decode)**: consumes Base76 characters continuously, reconstructs bits and Base76 digits, and emits decoded bytes as soon as token boundaries are resolved.  
-- **CLI parity**: supports `-r`, `-i infile`, `-o outfile`, `-v`, `--file-stream`, `--version`, `--help`.  
+- **CLI parity**: supports `-r`, `-i infile`, `-o outfile`, `-v`, `--version`, `--help`.  
 - **Streaming friendly**: intended for interactive and streaming workflows (output appears without waiting for full input).
 
 ---
@@ -44,7 +44,6 @@ cat file | ./b76pipe_stream
 ```
 
 **Notes**
-- Use `--file-stream` to suppress intermediate block formatting and only output the final stream.
 - Forward streaming processes input per‑byte; for exact bit‑for‑bit parity with the original global big‑int encoding, use the non‑streaming variant that buffers the entire input before encoding.
 
 ---
