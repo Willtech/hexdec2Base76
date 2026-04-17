@@ -1,373 +1,587 @@
 /*
-===============================================================================
- b76pipe.c
- Single-binary Base76 pipeline with optional custom alphabet.
-
- Features:
-   - Forward and reverse pipeline (-r)
-   - Input from file (-i) or message argument
-   - Output to file (-o) or stdout
-   - Custom alphabet via --alpha <file>
-   - 7-bit safe alphabet (ASCII < 128)
-   - Help (-h, --help) and version (--version)
-   - Streaming operation (no full-file buffering)
-
- Version: 1.0.0.2026.04.15
-
- Source Code produced by Willtech 2023–2026
- Compiled pipeline variant based on hexdec2Base76 project
- Converted & annotated with reference header by
- Professor. Damian A. James Williamson Grad. + Copilot
-===============================================================================
+#  b76pipe — Base76 7‑bit binary pipeline encoder/decoder
+#
+#  PIPELINE (forward)
+#    1. ASCII message
+#    2. ASCII → hex → Base76        (hex2base76.py)
+#    3. Base76 char → index (0–75)  (base76todec.py)
+#    4. index → 7‑bit binary
+#    5. 7‑bit bits → ASCII '0'/'1'
+#    6. '0'/'1' → ASCII 48/49 → DEC → Base76 (dec2base76.py)
+#
+#  PIPELINE (reverse, -r)
+#    1. Base76 → DEC                (base76todec.py)
+#    2. DEC 48/49 → ASCII '0'/'1'
+#    3. '0'/'1' → 7‑bit groups
+#    4. 7‑bit → index (0–75)
+#    5. index → Base76 char         (dec2base76.py)
+#    6. Base76 → hex → ASCII        (base76tohex.py)
+#
+#------------------------------------------------------------------------------
+#  AUTHOR
+#      Graduate. Damian Williamson
+#      Willtech, Swan Hill, Victoria, Australia.
+#
+#  AI COLLABORATION
+#      Microsoft Copilot — pipeline design, commentary, and integration sketch.
+#------------------------------------------------------------------------------
 */
+
+#include "b76pipe.h"
+#include "base76_alphabet.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
+#include <unistd.h>
+#include <errno.h>
 
-#include "base76_alphabet.h"
+/* Basic big-int (base-256, big-endian) */
+typedef struct {
+    unsigned char *data;
+    size_t len;
+} BigInt;
 
-#define TOOL_NAME    "b76pipe"
-#define TOOL_VERSION "1.0.0.2026.04.15"
-
-#define BASE76_LEN 76
-
-/* ---------------------------------------------------------------------------
-   Global alphabet (default from header, override via --alpha)
---------------------------------------------------------------------------- */
-
-static char active_alphabet[BASE76_LEN + 1] = BASE76_ALPHABET;
-
-/* ---------------------------------------------------------------------------
-   Alphabet loader for --alpha
-
-   Rules:
-     - Read file
-     - Ignore whitespace
-     - Ignore chars >= 128 (non 7-bit)
-     - Keep only first 76 UNIQUE chars
-     - If fewer than 76 unique chars -> error
---------------------------------------------------------------------------- */
-
-static int load_alphabet_file(const char *path) {
-    FILE *f = fopen(path, "r");
-    if (!f) {
-        fprintf(stderr, "%s: cannot open alphabet file '%s'\n", TOOL_NAME, path);
-        return -1;
+static BigInt
+bigint_from_bytes(const unsigned char *buf, size_t len)
+{
+    BigInt b;
+    if (len == 0) {
+        b.data = malloc(1);
+        if (!b.data) { perror("malloc"); exit(1); }
+        b.data[0] = 0;
+        b.len = 1;
+        return b;
     }
-
-    int seen[128] = {0};
-    int count = 0;
-    int c;
-
-    while ((c = fgetc(f)) != EOF) {
-        if (c < 0 || c >= 128) {
-            continue; /* ignore non 7-bit */
-        }
-        if (isspace((unsigned char)c)) {
-            continue; /* ignore whitespace */
-        }
-        if (seen[c]) {
-            continue; /* ignore duplicates */
-        }
-        seen[c] = 1;
-        active_alphabet[count++] = (char)c;
-        if (count == BASE76_LEN) {
-            break;
-        }
+    b.data = malloc(len);
+    if (!b.data) { perror("malloc"); exit(1); }
+    memcpy(b.data, buf, len);
+    b.len = len;
+    /* normalize leading zeros */
+    while (b.len > 1 && b.data[0] == 0) {
+        memmove(b.data, b.data + 1, b.len - 1);
+        b.len--;
+        b.data = realloc(b.data, b.len);
+        if (!b.data) { perror("realloc"); exit(1); }
     }
-
-    fclose(f);
-
-    if (count < BASE76_LEN) {
-        fprintf(stderr,
-                "%s: alphabet file '%s' must contain at least %d unique 7-bit characters\n",
-                TOOL_NAME, path, BASE76_LEN);
-        return -2;
-    }
-
-    active_alphabet[BASE76_LEN] = '\0';
-    return 0;
+    return b;
 }
 
-/* ---------------------------------------------------------------------------
-   Base76 helpers (using active_alphabet)
---------------------------------------------------------------------------- */
-
-static int char_to_val(char c) {
-    const char *p = strchr(active_alphabet, c);
-    return p ? (int)(p - active_alphabet) : -1;
+static BigInt
+bigint_zero(void)
+{
+    BigInt b;
+    b.data = malloc(1);
+    if (!b.data) { perror("malloc"); exit(1); }
+    b.data[0] = 0;
+    b.len = 1;
+    return b;
 }
 
-static void dec_to_base76(unsigned long long n, char *out, size_t out_sz) {
-    char buf[32];
-    int i = 0;
-
-    if (n == 0) {
-        if (out_sz < 2) {
-            out[0] = '\0';
-            return;
-        }
-        out[0] = active_alphabet[0];
-        out[1] = '\0';
-        return;
-    }
-
-    while (n > 0 && i < (int)(sizeof(buf) - 1)) {
-        buf[i++] = active_alphabet[n % BASE76_LEN];
-        n /= BASE76_LEN;
-    }
-    buf[i] = '\0';
-
-    if ((size_t)(i + 1) > out_sz) {
-        out[0] = '\0';
-        return;
-    }
-
-    for (int j = 0; j < i; j++) {
-        out[j] = buf[i - 1 - j];
-    }
-    out[i] = '\0';
+static void
+bigint_free(BigInt *b)
+{
+    if (!b || !b->data) return;
+    free(b->data);
+    b->data = NULL;
+    b->len = 0;
 }
 
-static unsigned long long base76_to_dec(const char *s) {
-    unsigned long long val = 0;
-    while (*s) {
-        int d = char_to_val(*s++);
-        if (d < 0) {
-            fprintf(stderr, "%s: invalid Base76 character '%c'\n", TOOL_NAME, s[-1]);
+/* divide in-place by small divisor (<= 76). returns remainder */
+static unsigned int
+bigint_div_small(BigInt *b, unsigned int divisor)
+{
+    unsigned int rem = 0;
+    for (size_t i = 0; i < b->len; i++) {
+        unsigned int cur = (rem << 8) | b->data[i];
+        b->data[i] = (unsigned char)(cur / divisor);
+        rem = cur % divisor;
+    }
+    /* normalize leading zeros */
+    size_t skip = 0;
+    while (b->len > 1 && b->data[skip] == 0) {
+        skip++;
+        b->len--;
+    }
+    if (skip) {
+        memmove(b->data, b->data + skip, b->len);
+        b->data = realloc(b->data, b->len);
+        if (!b->data) { perror("realloc"); exit(1); }
+    }
+    return rem;
+}
+
+/* multiply by small mul and add small add */
+static void
+bigint_mul_small_add(BigInt *b, unsigned int mul, unsigned int add)
+{
+    unsigned int carry = add;
+    for (ssize_t i = (ssize_t)b->len - 1; i >= 0; i--) {
+        unsigned int cur = b->data[i] * mul + carry;
+        b->data[i] = (unsigned char)(cur & 0xFF);
+        carry = cur >> 8;
+    }
+    while (carry) {
+        unsigned char *newdata = malloc(b->len + 1);
+        if (!newdata) { perror("malloc"); exit(1); }
+        newdata[0] = (unsigned char)(carry & 0xFF);
+        memcpy(newdata + 1, b->data, b->len);
+        free(b->data);
+        b->data = newdata;
+        b->len++;
+        carry >>= 8;
+    }
+}
+
+/* convert BigInt to bytes (caller frees) */
+static unsigned char *
+bigint_to_bytes(const BigInt *b, size_t *out_len)
+{
+    unsigned char *buf = malloc(b->len);
+    if (!buf) { perror("malloc"); exit(1); }
+    memcpy(buf, b->data, b->len);
+    *out_len = b->len;
+    return buf;
+}
+
+/* Alphabet lookup table */
+static int base76_lookup[256];
+
+static void
+build_lookup(void)
+{
+    if (BASE76_ALPHABET_LEN != 76) {
+        fprintf(stderr, "Error: BASE76_ALPHABET must be exactly 76 characters (got %zu)\n",
+                (size_t)BASE76_ALPHABET_LEN);
+        exit(1);
+    }
+    for (int i = 0; i < 256; i++) base76_lookup[i] = -1;
+    for (int i = 0; i < (int)BASE76_ALPHABET_LEN; i++) {
+        unsigned char c = (unsigned char)BASE76_ALPHABET[i];
+        if (base76_lookup[c] != -1) {
+            fprintf(stderr, "Error: duplicate character '%c' in Base76 alphabet\n", c);
             exit(1);
         }
-        val = val * BASE76_LEN + d;
+        base76_lookup[c] = i;
     }
-    return val;
 }
 
-/* ---------------------------------------------------------------------------
-   Streaming pipeline:
-     Forward:
-       - read bytes
-       - for each byte: encode as decimal -> Base76
-       - separate tokens with space, final newline
-     Reverse:
-       - read Base76 tokens separated by whitespace
-       - decode each to decimal -> byte
---------------------------------------------------------------------------- */
+/* bytes -> Base76 (caller frees) */
+static char *
+bytes_to_base76(const unsigned char *buf, size_t len)
+{
+    BigInt b = bigint_from_bytes(buf, len);
 
-static int pipeline_forward(FILE *in, FILE *out) {
-    int c;
-    int first = 1;
+    if (b.len == 1 && b.data[0] == 0) {
+        char *out = malloc(2);
+        if (!out) { perror("malloc"); exit(1); }
+        out[0] = BASE76_ALPHABET[0];
+        out[1] = '\0';
+        bigint_free(&b);
+        return out;
+    }
 
-    while ((c = fgetc(in)) != EOF) {
-        unsigned char b = (unsigned char)c;
-        char enc[32];
+    size_t cap = 32;
+    char *digits = malloc(cap);
+    if (!digits) { perror("malloc"); exit(1); }
+    size_t n = 0;
 
-        dec_to_base76((unsigned long long)b, enc, sizeof(enc));
-
-        if (!first) {
-            fputc(' ', out);
+    while (!(b.len == 1 && b.data[0] == 0)) {
+        unsigned int rem = bigint_div_small(&b, 76);
+        if (n + 1 >= cap) {
+            cap *= 2;
+            digits = realloc(digits, cap);
+            if (!digits) { perror("realloc"); exit(1); }
         }
-        first = 0;
-
-        fputs(enc, out);
+        digits[n++] = BASE76_ALPHABET[rem];
     }
 
-    fputc('\n', out);
-    return 0;
+    /* reverse */
+    for (size_t i = 0; i < n/2; i++) {
+        char t = digits[i];
+        digits[i] = digits[n-1-i];
+        digits[n-1-i] = t;
+    }
+
+    char *out = malloc(n + 1);
+    if (!out) { perror("malloc"); exit(1); }
+    memcpy(out, digits, n);
+    out[n] = '\0';
+    free(digits);
+    bigint_free(&b);
+    return out;
 }
 
-static int pipeline_reverse(FILE *in, FILE *out) {
-    char token[64];
-    int ti = 0;
-    int c;
+/* Base76 -> bytes (caller frees) */
+static unsigned char *
+base76_to_bytes(const char *s, size_t *out_len)
+{
+    BigInt b = bigint_zero();
+    size_t slen = strlen(s);
+    for (size_t i = 0; i < slen; i++) {
+        unsigned char ch = (unsigned char)s[i];
+        int idx = base76_lookup[ch];
+        if (idx < 0) {
+            fprintf(stderr, "Error: Invalid Base76 character '%c'\n", ch);
+            exit(1);
+        }
+        bigint_mul_small_add(&b, 76, (unsigned int)idx);
+    }
+    unsigned char *bytes = bigint_to_bytes(&b, out_len);
+    bigint_free(&b);
+    return bytes;
+}
 
-    while ((c = fgetc(in)) != EOF) {
-        if (isspace((unsigned char)c)) {
-            if (ti > 0) {
-                token[ti] = '\0';
-                unsigned long long v = base76_to_dec(token);
-                if (v > 255) {
-                    fprintf(stderr, "%s: decoded value %llu out of byte range\n",
-                            TOOL_NAME, v);
-                    return 1;
-                }
-                fputc((unsigned char)v, out);
-                ti = 0;
+/* decimal (small) -> Base76 (caller frees) */
+static char *
+dec_to_base76(unsigned int n)
+{
+    char tmp[32];
+    size_t pos = 0;
+    if (n == 0) {
+        tmp[pos++] = BASE76_ALPHABET[0];
+    } else {
+        while (n > 0) {
+            unsigned int rem = n % 76;
+            n /= 76;
+            tmp[pos++] = BASE76_ALPHABET[rem];
+        }
+    }
+    for (size_t i = 0; i < pos/2; i++) {
+        char t = tmp[i];
+        tmp[i] = tmp[pos-1-i];
+        tmp[pos-1-i] = t;
+    }
+    char *out = malloc(pos + 1);
+    if (!out) { perror("malloc"); exit(1); }
+    memcpy(out, tmp, pos);
+    out[pos] = '\0';
+    return out;
+}
+
+static int
+base76_char_to_index(char c)
+{
+    int idx = base76_lookup[(unsigned char)c];
+    if (idx < 0) {
+        fprintf(stderr, "Error: Invalid Base76 character '%c'\n", c);
+        exit(1);
+    }
+    return idx;
+}
+
+static char
+index_to_base76(unsigned int idx)
+{
+    if (idx >= (unsigned int)BASE76_ALPHABET_LEN) {
+        fprintf(stderr, "Error: index out of range: %u\n", idx);
+        exit(1);
+    }
+    return BASE76_ALPHABET[idx];
+}
+
+/* read whole file or stdin (if path == "-") */
+static unsigned char *
+read_file_all(const char *path, size_t *out_len)
+{
+    if (path && strcmp(path, "-") == 0) {
+        size_t cap = 4096, len = 0;
+        unsigned char *buf = malloc(cap);
+        if (!buf) { perror("malloc"); exit(1); }
+        for (;;) {
+            size_t n = fread(buf + len, 1, cap - len, stdin);
+            len += n;
+            if (n == 0) break;
+            if (len == cap) {
+                cap *= 2;
+                buf = realloc(buf, cap);
+                if (!buf) { perror("realloc"); exit(1); }
             }
-            continue;
         }
-
-        if (ti < (int)sizeof(token) - 1) {
-            token[ti++] = (char)c;
-        } else {
-            fprintf(stderr, "%s: token too long in input\n", TOOL_NAME);
-            return 1;
-        }
+        *out_len = len;
+        return buf;
     }
 
-    if (ti > 0) {
-        token[ti] = '\0';
-        unsigned long long v = base76_to_dec(token);
-        if (v > 255) {
-            fprintf(stderr, "%s: decoded value %llu out of byte range\n",
-                    TOOL_NAME, v);
-            return 1;
-        }
-        fputc((unsigned char)v, out);
+    FILE *f = fopen(path, "rb");
+    if (!f) {
+        fprintf(stderr, "Error opening '%s': %s\n", path ? path : "(null)", strerror(errno));
+        exit(1);
     }
-
-    return 0;
+    if (fseek(f, 0, SEEK_END) != 0) { perror("fseek"); exit(1); }
+    long s = ftell(f);
+    if (s < 0) { perror("ftell"); exit(1); }
+    rewind(f);
+    unsigned char *buf = malloc((size_t)s + 1);
+    if (!buf) { perror("malloc"); exit(1); }
+    size_t got = fread(buf, 1, (size_t)s, f);
+    if (got != (size_t)s && ferror(f)) { perror("fread"); exit(1); }
+    fclose(f);
+    *out_len = got;
+    return buf;
 }
 
-/* ---------------------------------------------------------------------------
-   CLI: parsing and wrapper
---------------------------------------------------------------------------- */
-
-static void print_help(void) {
-    printf("%s - Base76 pipeline (forward and reverse)\n", TOOL_NAME);
-    printf("\nUsage:\n");
-    printf("  %s [-r] [-i infile] [-o outfile] [--alpha alphabet_file] [message]\n",
-           TOOL_NAME);
-    printf("\nOptions:\n");
-    printf("  -r                 Reverse pipeline (Base76 -> bytes)\n");
-    printf("  -i infile          Read input from file (ignores message argument)\n");
-    printf("  -o outfile         Write output to file (default: stdout)\n");
-    printf("  --alpha file       Load custom Base76 alphabet from file\n");
-    printf("  -h, --help         Show this help message\n");
-    printf("  --version          Show version information\n");
-    printf("\nAlphabet file rules (--alpha):\n");
-    printf("  - Only 7-bit characters (ASCII < 128) are considered\n");
-    printf("  - Whitespace is ignored\n");
-    printf("  - Duplicate characters are ignored\n");
-    printf("  - The first 76 unique 7-bit characters form the alphabet\n");
-    printf("  - Fewer than 76 unique characters -> error\n");
-    printf("\nInput size:\n");
-    printf("  b76pipe operates as a streaming pipeline and does not load the entire\n");
-    printf("  input into memory. Forward mode processes input byte-by-byte, and\n");
-    printf("  reverse mode processes Base76 tokens one at a time. This allows\n");
-    printf("  processing of arbitrarily large inputs, limited only by I/O capacity.\n");
-    printf("\nOutput behaviour:\n");
-    printf("  Output is produced incrementally as input is processed. Large inputs\n");
-    printf("  may generate large output streams. When writing to a terminal, consider\n");
-    printf("  using -o outfile to avoid overwhelming the display.\n");
+void
+usage(const char *prog)
+{
+    fprintf(stderr, "Usage: %s [-r] [-i infile] [-o outfile] [-v] [--file-stream] [message]\n", prog);
+    fprintf(stderr, "  -r           reverse (decode)\n");
+    fprintf(stderr, "  -i infile    read input from infile (use - for stdin)\n");
+    fprintf(stderr, "  -o outfile   write final output to outfile (binary safe)\n");
+    fprintf(stderr, "  -v           print Stage 1 intermediate tokens (per-byte Base76)\n");
+    fprintf(stderr, "  --file-stream  only output Stage 2 (final output) to stdout or -o file\n");
+    fprintf(stderr, "  -h, --help   show this help message and exit\n");
+    fprintf(stderr, "  --version    print version and exit\n");
+    fprintf(stderr, "Version: %s\n", B76PIPE_VERSION);
+    exit(1);
 }
 
-static void print_version(void) {
-    printf("%s version %s\n", TOOL_NAME, TOOL_VERSION);
+/*
+ * Print Stage 1 tokens for an ASCII byte sequence.
+ *
+ * For each input byte we print its Base76 encoding (as produced by dec_to_base76)
+ * separated by single spaces. The block is terminated by two newlines to leave
+ * a blank line before the final output paragraph.
+ *
+ * This intermediate output is written only when -v is specified.
+ */
+static void
+print_stage1_tokens_from_ascii_stderr(const unsigned char *input, size_t len)
+{
+    for (size_t i = 0; i < len; i++) {
+        unsigned int byte = input[i];
+        char *b76 = dec_to_base76(byte);
+        if (!b76) { perror("malloc"); exit(1); }
+        if (i > 0) fputc(' ', stderr);
+        fputs(b76, stderr);
+        free(b76);
+    }
+    fputc('\n', stderr);
+    fputc('\n', stderr);
+    fflush(stderr);
 }
 
-static int b76pipe_main(int reverse,
-                        const char *infile,
-                        const char *outfile,
-                        const char *message) {
-    FILE *in = NULL;
-    FILE *out = NULL;
-    int rc = 0;
-
-    if (infile) {
-        in = fopen(infile, "rb");
-        if (!in) {
-            fprintf(stderr, "%s: cannot open input file '%s'\n", TOOL_NAME, infile);
-            return 1;
-        }
-    } else {
-        if (message) {
-            /* Use a temporary file as a simple portable in-memory stream */
-            FILE *tmp = tmpfile();
-            if (!tmp) {
-                fprintf(stderr, "%s: cannot create temporary stream\n", TOOL_NAME);
-                return 1;
-            }
-            fputs(message, tmp);
-            rewind(tmp);
-            in = tmp;
-        } else {
-            fprintf(stderr, "%s: no input provided (use -i or message)\n", TOOL_NAME);
-            return 1;
-        }
-    }
-
-    if (outfile) {
-        out = fopen(outfile, "wb");
-        if (!out) {
-            fprintf(stderr, "%s: cannot open output file '%s'\n", TOOL_NAME, outfile);
-            if (in) fclose(in);
-            return 1;
-        }
-    } else {
-        out = stdout;
-    }
-
-    if (reverse) {
-        rc = pipeline_reverse(in, out);
-    } else {
-        rc = pipeline_forward(in, out);
-    }
-
-    if (in) fclose(in);
-    if (outfile && out) fclose(out);
-
-    return rc;
-}
-
-int main(int argc, char *argv[]) {
+int
+main(int argc, char **argv)
+{
     int reverse = 0;
     const char *infile = NULL;
     const char *outfile = NULL;
-    const char *alpha_file = NULL;
-    const char *message = NULL;
+    int file_stream = 0;
+    int verbose = 0;
+    int opt;
 
+    /* Support long options --help, --version, --file-stream by scanning argv first */
     for (int i = 1; i < argc; i++) {
-        if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) {
-            print_help();
+        if (strcmp(argv[i], "--version") == 0) {
+            printf("%s\n", B76PIPE_VERSION);
             return 0;
         }
-        if (!strcmp(argv[i], "--version")) {
-            print_version();
-            return 0;
+        if (strcmp(argv[i], "--help") == 0) {
+            usage(argv[0]);
         }
-        if (!strcmp(argv[i], "-r")) {
-            reverse = 1;
-            continue;
-        }
-        if (!strcmp(argv[i], "-i")) {
-            if (i + 1 < argc) {
-                infile = argv[++i];
-            } else {
-                fprintf(stderr, "%s: -i requires a file argument\n", TOOL_NAME);
-                return 1;
-            }
-            continue;
-        }
-        if (!strcmp(argv[i], "-o")) {
-            if (i + 1 < argc) {
-                outfile = argv[++i];
-            } else {
-                fprintf(stderr, "%s: -o requires a file argument\n", TOOL_NAME);
-                return 1;
-            }
-            continue;
-        }
-        if (!strcmp(argv[i], "--alpha")) {
-            if (i + 1 < argc) {
-                alpha_file = argv[++i];
-            } else {
-                fprintf(stderr, "%s: --alpha requires a file argument\n", TOOL_NAME);
-                return 1;
-            }
-            continue;
-        }
-        if (!message) {
-            message = argv[i];
+        if (strcmp(argv[i], "--file-stream") == 0) {
+            file_stream = 1;
         }
     }
 
-    if (alpha_file) {
-        if (load_alphabet_file(alpha_file) != 0) {
-            return 1;
+    build_lookup();
+
+    while ((opt = getopt(argc, argv, "ri:o:vh")) != -1) {
+        switch (opt) {
+        case 'r': reverse = 1; break;
+        case 'i': infile = optarg; break;
+        case 'o': outfile = optarg; break;
+        case 'v': verbose = 1; break;
+        case 'h': usage(argv[0]); break;
+        default: usage(argv[0]);
         }
     }
 
-    return b76pipe_main(reverse, infile, outfile, message);
+    argc -= optind;
+    argv += optind;
+
+    /* If --file-stream placed after options */
+    for (int i = 0; i < argc; i++) {
+        if (strcmp(argv[i], "--file-stream") == 0) file_stream = 1;
+    }
+
+    unsigned char *input = NULL;
+    size_t input_len = 0;
+
+    if (infile) {
+        input = read_file_all(infile, &input_len);
+    } else if (argc > 0) {
+        /* join remaining args with spaces */
+        size_t total = 0;
+        for (int i = 0; i < argc; i++) {
+            total += strlen(argv[i]);
+            if (i + 1 < argc) total += 1;
+        }
+        input = malloc(total);
+        if (!input) { perror("malloc"); exit(1); }
+        size_t pos = 0;
+        for (int i = 0; i < argc; i++) {
+            size_t l = strlen(argv[i]);
+            memcpy(input + pos, argv[i], l);
+            pos += l;
+            if (i + 1 < argc) input[pos++] = ' ';
+        }
+        input_len = total;
+    } else {
+        /* read stdin */
+        input = read_file_all("-", &input_len);
+    }
+
+    FILE *outf = stdout;
+    if (outfile) {
+        outf = fopen(outfile, "wb");
+        if (!outf) {
+            fprintf(stderr, "Error opening output '%s': %s\n", outfile, strerror(errno));
+            exit(1);
+        }
+    }
+
+    if (!reverse) {
+        /* Forward pipeline:
+         *  - Print Stage 1 tokens (per-byte Base76) only if -v and not --file-stream.
+         *  - Produce final encoded output and write it to outfile (if -o) or stdout.
+         */
+
+        /* Stage 1 intermediate: per-byte Base76 tokens */
+        if (verbose && !file_stream) {
+            print_stage1_tokens_from_ascii_stderr(input, input_len);
+        }
+
+        /* Now produce the final encoded output (same as before) */
+        char *b76_1 = bytes_to_base76(input, input_len);
+        size_t b76_len = strlen(b76_1);
+
+        /* build bit string */
+        size_t bit_cap = b76_len * 7 + 1;
+        char *bits = malloc(bit_cap);
+        if (!bits) { perror("malloc"); exit(1); }
+        size_t bit_len = 0;
+
+        for (size_t i = 0; i < b76_len; i++) {
+            int idx = base76_char_to_index(b76_1[i]);
+            for (int b = 6; b >= 0; b--) {
+                bits[bit_len++] = ((idx >> b) & 1) ? '1' : '0';
+            }
+        }
+        bits[bit_len] = '\0';
+
+        /* convert each '0'/'1' to decimal 48/49 then to Base76 and append */
+        size_t out_cap = bit_len * 3 + 1;
+        char *outbuf = malloc(out_cap);
+        if (!outbuf) { perror("malloc"); exit(1); }
+        size_t out_len = 0;
+
+        for (size_t i = 0; i < bit_len; i++) {
+            unsigned int val = (bits[i] == '0') ? 48u : 49u;
+            char *b76 = dec_to_base76(val);
+            size_t l = strlen(b76);
+            if (out_len + l + 1 >= out_cap) {
+                out_cap = (out_len + l + 1) * 2;
+                outbuf = realloc(outbuf, out_cap);
+                if (!outbuf) { perror("realloc"); exit(1); }
+            }
+            memcpy(outbuf + out_len, b76, l);
+            out_len += l;
+            free(b76);
+        }
+
+        /* write final output: to outfile if specified, otherwise to stdout.
+         * When writing to stdout, print a trailing newline so the final output
+         * appears on its own line after the blank line from the intermediate block.
+         */
+        if (outfile) {
+            fwrite(outbuf, 1, out_len, outf);
+        } else {
+            fwrite(outbuf, 1, out_len, stdout);
+            fputc('\n', stdout);
+        }
+
+        free(b76_1);
+        free(bits);
+        free(outbuf);
+    } else {
+        /* Reverse pipeline:
+         *  - Decode input to final bytes.
+         *  - Print Stage 1 tokens (per-byte Base76 of decoded bytes) only if -v and not --file-stream.
+         *  - Write final decoded bytes to outfile (if -o) or stdout.
+         */
+
+        /* treat input as a string of Base76 characters */
+        char *encoded = malloc(input_len + 1);
+        if (!encoded) { perror("malloc"); exit(1); }
+        memcpy(encoded, input, input_len);
+        encoded[input_len] = '\0';
+
+        /* 1. Base76 -> DEC -> ASCII '0'/'1' */
+        size_t elen = strlen(encoded);
+        char *ascii01 = malloc(elen + 1);
+        if (!ascii01) { perror("malloc"); exit(1); }
+        size_t a_len = 0;
+
+        for (size_t i = 0; i < elen; i++) {
+            int dec = base76_char_to_index(encoded[i]);
+            if (dec == 48) ascii01[a_len++] = '0';
+            else if (dec == 49) ascii01[a_len++] = '1';
+            else {
+                fprintf(stderr, "Invalid encoded bit: %c (DEC=%d)\n", encoded[i], dec);
+                exit(1);
+            }
+        }
+        ascii01[a_len] = '\0';
+
+        /* 2. ASCII '0'/'1' -> 7-bit groups -> Base76 index */
+        char *b76_1 = malloc(a_len / 7 + 2);
+        if (!b76_1) { perror("malloc"); exit(1); }
+        size_t b76_len = 0;
+        size_t pos = 0;
+
+        while (a_len - pos >= 7) {
+            unsigned int idx = 0;
+            for (int bit = 0; bit < 7; bit++) {
+                idx <<= 1;
+                if (ascii01[pos + bit] == '1')
+                    idx |= 1;
+            }
+            pos += 7;
+            if (idx >= BASE76_ALPHABET_LEN) {
+                fprintf(stderr, "Error: 7-bit index out of range: %u\n", idx);
+                exit(1);
+            }
+            b76_1[b76_len++] = index_to_base76(idx);
+        }
+        b76_1[b76_len] = '\0';
+
+        /* 3. Base76 -> bytes (final decoded bytes) */
+        size_t out_len = 0;
+        unsigned char *out_bytes = base76_to_bytes(b76_1, &out_len);
+
+        /* Print Stage 1 tokens for the decoded bytes (only if -v and not --file-stream) */
+        if (verbose && !file_stream) {
+            print_stage1_tokens_from_ascii_stderr(out_bytes, out_len);
+        }
+
+        /* Write final decoded bytes to outfile or stdout.
+         * When writing to stdout, append a newline so the final output appears
+         * on its own line after the blank line from the intermediate block.
+         */
+        if (outfile) {
+            fwrite(out_bytes, 1, out_len, outf);
+        } else {
+            fwrite(out_bytes, 1, out_len, stdout);
+        }
+
+        free(encoded);
+        free(ascii01);
+        free(b76_1);
+        free(out_bytes);
+    }
+
+    if (outfile) fclose(outf);
+    free(input);
+    return 0;
 }
