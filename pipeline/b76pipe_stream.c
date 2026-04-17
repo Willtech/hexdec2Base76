@@ -1,9 +1,10 @@
 /* b76pipe_stream.c
  *
- * Streaming-friendly reimplementation of b76pipe.c
- * Preserves CLI, flags, and exact IO semantics.
+ * Streaming-friendly reimplementation of b76pipe.c (C11).
+ * Produces continuous output while processing input per-byte.
  *
- * Build: gcc -std=c11 -O2 -o b76pipe_stream b76pipe_stream.c
+ * Build:
+ *   gcc -std=c11 -O2 -Wall -Wextra -o b76pipe_stream b76pipe_stream.c
  *
  * Requires b76pipe.h and base76_alphabet.h (same as original).
  */
@@ -17,14 +18,13 @@
 #include <unistd.h>
 #include <errno.h>
 
-/* Reuse BigInt helpers from original but keep them local here for clarity */
+/* BigInt helpers (kept for parity; mark unused to avoid warnings) */
 typedef struct {
     unsigned char *data;
     size_t len;
 } BigInt;
 
-/* --- BigInt helpers (same semantics as original) --- */
-
+static BigInt bigint_from_bytes(const unsigned char *buf, size_t len) __attribute__((unused));
 static BigInt bigint_from_bytes(const unsigned char *buf, size_t len) {
     BigInt b;
     if (len == 0) {
@@ -47,6 +47,7 @@ static BigInt bigint_from_bytes(const unsigned char *buf, size_t len) {
     return b;
 }
 
+static BigInt bigint_zero(void) __attribute__((unused));
 static BigInt bigint_zero(void) {
     BigInt b;
     b.data = malloc(1);
@@ -56,6 +57,7 @@ static BigInt bigint_zero(void) {
     return b;
 }
 
+static void bigint_free(BigInt *b) __attribute__((unused));
 static void bigint_free(BigInt *b) {
     if (!b || !b->data) return;
     free(b->data);
@@ -63,6 +65,7 @@ static void bigint_free(BigInt *b) {
     b->len = 0;
 }
 
+static unsigned int bigint_div_small(BigInt *b, unsigned int divisor) __attribute__((unused));
 static unsigned int bigint_div_small(BigInt *b, unsigned int divisor) {
     unsigned int rem = 0;
     for (size_t i = 0; i < b->len; i++) {
@@ -83,6 +86,7 @@ static unsigned int bigint_div_small(BigInt *b, unsigned int divisor) {
     return rem;
 }
 
+static void bigint_mul_small_add(BigInt *b, unsigned int mul, unsigned int add) __attribute__((unused));
 static void bigint_mul_small_add(BigInt *b, unsigned int mul, unsigned int add) {
     unsigned int carry = add;
     for (ssize_t i = (ssize_t)b->len - 1; i >= 0; i--) {
@@ -102,6 +106,7 @@ static void bigint_mul_small_add(BigInt *b, unsigned int mul, unsigned int add) 
     }
 }
 
+static unsigned char *bigint_to_bytes(const BigInt *b, size_t *out_len) __attribute__((unused));
 static unsigned char *bigint_to_bytes(const BigInt *b, size_t *out_len) {
     unsigned char *buf = malloc(b->len);
     if (!buf) { perror("malloc"); exit(1); }
@@ -110,8 +115,7 @@ static unsigned char *bigint_to_bytes(const BigInt *b, size_t *out_len) {
     return buf;
 }
 
-/* --- Alphabet lookup --- */
-
+/* Alphabet lookup */
 static int base76_lookup[256];
 
 static void build_lookup(void) {
@@ -131,60 +135,12 @@ static void build_lookup(void) {
     }
 }
 
-/* bytes -> Base76 (caller frees) */
-static char *bytes_to_base76(const unsigned char *buf, size_t len) {
-    BigInt b = bigint_from_bytes(buf, len);
-    if (b.len == 1 && b.data[0] == 0) {
-        char *out = malloc(2);
-        if (!out) { perror("malloc"); exit(1); }
-        out[0] = BASE76_ALPHABET[0];
-        out[1] = '\0';
-        bigint_free(&b);
-        return out;
+static char index_to_base76(unsigned int idx) {
+    if (idx >= (unsigned int)BASE76_ALPHABET_LEN) {
+        fprintf(stderr, "Error: index out of range: %u\n", idx);
+        exit(1);
     }
-    size_t cap = 32;
-    char *digits = malloc(cap);
-    if (!digits) { perror("malloc"); exit(1); }
-    size_t n = 0;
-    while (!(b.len == 1 && b.data[0] == 0)) {
-        unsigned int rem = bigint_div_small(&b, 76);
-        if (n + 1 >= cap) {
-            cap *= 2;
-            digits = realloc(digits, cap);
-            if (!digits) { perror("realloc"); exit(1); }
-        }
-        digits[n++] = BASE76_ALPHABET[rem];
-    }
-    for (size_t i = 0; i < n/2; i++) {
-        char t = digits[i];
-        digits[i] = digits[n-1-i];
-        digits[n-1-i] = t;
-    }
-    char *out = malloc(n + 1);
-    if (!out) { perror("malloc"); exit(1); }
-    memcpy(out, digits, n);
-    out[n] = '\0';
-    free(digits);
-    bigint_free(&b);
-    return out;
-}
-
-/* Base76 -> bytes (caller frees) */
-static unsigned char *base76_to_bytes(const char *s, size_t *out_len) {
-    BigInt b = bigint_zero();
-    size_t slen = strlen(s);
-    for (size_t i = 0; i < slen; i++) {
-        unsigned char ch = (unsigned char)s[i];
-        int idx = base76_lookup[ch];
-        if (idx < 0) {
-            fprintf(stderr, "Error: Invalid Base76 character '%c'\n", ch);
-            exit(1);
-        }
-        bigint_mul_small_add(&b, 76, (unsigned int)idx);
-    }
-    unsigned char *bytes = bigint_to_bytes(&b, out_len);
-    bigint_free(&b);
-    return bytes;
+    return BASE76_ALPHABET[idx];
 }
 
 /* decimal (small) -> Base76 (caller frees) */
@@ -212,28 +168,7 @@ static char *dec_to_base76(unsigned int n) {
     return out;
 }
 
-static int base76_char_to_index(char c) {
-    int idx = base76_lookup[(unsigned char)c];
-    if (idx < 0) {
-        fprintf(stderr, "Error: Invalid Base76 character '%c'\n", c);
-        exit(1);
-    }
-    return idx;
-}
-
-static char index_to_base76(unsigned int idx) {
-    if (idx >= (unsigned int)BASE76_ALPHABET_LEN) {
-        fprintf(stderr, "Error: index out of range: %u\n", idx);
-        exit(1);
-    }
-    return BASE76_ALPHABET[idx];
-}
-
-/* --- Streaming helpers --- */
-
-/* Read entire file into memory for file paths (keeps parity with original for files).
- * For stdin ("-") we stream into a dynamically growing buffer as original did.
- */
+/* read whole file or stdin (if path == "-") */
 static unsigned char *read_file_all(const char *path, size_t *out_len) {
     if (path && strcmp(path, "-") == 0) {
         size_t cap = 4096, len = 0;
@@ -284,23 +219,106 @@ void usage(const char *prog) {
     exit(1);
 }
 
-/* Print Stage 1 tokens for an ASCII byte sequence to stderr (same as original) */
-static void print_stage1_tokens_from_ascii_stderr(const unsigned char *input, size_t len) {
-    for (size_t i = 0; i < len; i++) {
-        unsigned int byte = input[i];
-        char *b76 = dec_to_base76(byte);
-        if (!b76) { perror("malloc"); exit(1); }
-        if (i > 0) fputc(' ', stderr);
-        fputs(b76, stderr);
-        free(b76);
-    }
-    fputc('\n', stderr);
-    fputc('\n', stderr);
+/* Helper: print single Stage 1 token for a byte to stderr (no newline) */
+static void print_stage1_token_from_byte_stderr(unsigned char byte, int first) {
+    char *b76 = dec_to_base76((unsigned int)byte);
+    if (!b76) { perror("malloc"); exit(1); }
+    if (!first) fputc(' ', stderr);
+    fputs(b76, stderr);
+    free(b76);
     fflush(stderr);
 }
 
-/* --- Main --- */
+/* Helper: write string to output file (no trailing newline) */
+static void write_str_out(FILE *outf, const char *s, size_t len) {
+    if (fwrite(s, 1, len, outf) != len) { perror("fwrite"); exit(1); }
+}
 
+/* Forward per-byte processing helper */
+static void process_byte_forward(unsigned char byte, int verbose, int file_stream, int *first_token_ptr, FILE *outf) {
+    if (verbose && !file_stream) {
+        print_stage1_token_from_byte_stderr(byte, *first_token_ptr);
+        *first_token_ptr = 0;
+    }
+
+    /* Use dec_to_base76(byte) as Stage1 token and for final output emit bits for each digit */
+    char *token = dec_to_base76((unsigned int)byte);
+    size_t tlen = strlen(token);
+    for (size_t i = 0; i < tlen; i++) {
+        unsigned char ch = (unsigned char)token[i];
+        int idx = base76_lookup[ch];
+        if (idx < 0) {
+            fprintf(stderr, "Error: Invalid Base76 character '%c' from dec_to_base76\n", ch);
+            exit(1);
+        }
+        for (int b = 6; b >= 0; b--) {
+            unsigned int bit = (idx >> b) & 1u;
+            unsigned int val = bit ? 49u : 48u;
+            char *b76 = dec_to_base76(val);
+            size_t l = strlen(b76);
+            write_str_out(outf, b76, l);
+            free(b76);
+        }
+    }
+    free(token);
+    fflush(outf);
+}
+
+/* Reverse helpers: buffer management for reconstructed Base76 digits */
+struct rev_state {
+    char digit_buf[8];
+    size_t digit_buf_len;
+    unsigned int bitbuf;
+    int bits_collected;
+    FILE *outf;
+};
+
+static void rev_emit_token_if_possible(struct rev_state *st) {
+    while (st->digit_buf_len >= 1) {
+        if (st->digit_buf_len == 1) {
+            /* wait for second digit to decide two-digit token */
+            break;
+        }
+        unsigned int d0 = (unsigned int)base76_lookup[(unsigned char)st->digit_buf[0]];
+        unsigned int d1 = (unsigned int)base76_lookup[(unsigned char)st->digit_buf[1]];
+        unsigned int combined = d0 * 76u + d1;
+        if (combined <= 255u) {
+            unsigned char outb = (unsigned char)combined;
+            if (fwrite(&outb, 1, 1, st->outf) != 1) { perror("fwrite"); exit(1); }
+            memmove(st->digit_buf, st->digit_buf + 2, st->digit_buf_len - 2);
+            st->digit_buf_len -= 2;
+        } else {
+            unsigned int single = d0;
+            unsigned char outb = (unsigned char)single;
+            if (fwrite(&outb, 1, 1, st->outf) != 1) { perror("fwrite"); exit(1); }
+            memmove(st->digit_buf, st->digit_buf + 1, st->digit_buf_len - 1);
+            st->digit_buf_len -= 1;
+        }
+    }
+    fflush(st->outf);
+}
+
+static void rev_finalize_tokens(struct rev_state *st) {
+    if (st->digit_buf_len == 1) {
+        unsigned int d0 = (unsigned int)base76_lookup[(unsigned char)st->digit_buf[0]];
+        unsigned char outb = (unsigned char)d0;
+        if (fwrite(&outb, 1, 1, st->outf) != 1) { perror("fwrite"); exit(1); }
+        st->digit_buf_len = 0;
+    } else if (st->digit_buf_len >= 2) {
+        while (st->digit_buf_len >= 2) {
+            unsigned int d0 = (unsigned int)base76_lookup[(unsigned char)st->digit_buf[0]];
+            unsigned int d1 = (unsigned int)base76_lookup[(unsigned char)st->digit_buf[1]];
+            unsigned int combined = d0 * 76u + d1;
+            unsigned char outb = (unsigned char)combined;
+            if (fwrite(&outb, 1, 1, st->outf) != 1) { perror("fwrite"); exit(1); }
+            memmove(st->digit_buf, st->digit_buf + 2, st->digit_buf_len - 2);
+            st->digit_buf_len -= 2;
+        }
+    }
+    fflush(st->outf);
+}
+
+/* Main */
 int main(int argc, char **argv) {
     int reverse = 0;
     const char *infile = NULL;
@@ -377,119 +395,54 @@ int main(int argc, char **argv) {
     }
 
     if (!reverse) {
+        /* Forward streaming: process per-byte from input buffer */
+        int first_token = 1;
+        for (size_t i = 0; i < input_len; i++) {
+            process_byte_forward(input[i], verbose, file_stream, &first_token, outf);
+        }
         if (verbose && !file_stream) {
-            print_stage1_tokens_from_ascii_stderr(input, input_len);
+            fputc('\n', stderr);
+            fputc('\n', stderr);
+            fflush(stderr);
         }
-
-        /* Forward: convert entire input bytes -> Base76 string (same as original) */
-        char *b76_1 = bytes_to_base76(input, input_len);
-        size_t b76_len = strlen(b76_1);
-
-        /* Build bit string (7 bits per Base76 index) */
-        size_t bit_cap = b76_len * 7 + 1;
-        char *bits = malloc(bit_cap);
-        if (!bits) { perror("malloc"); exit(1); }
-        size_t bit_len = 0;
-
-        for (size_t i = 0; i < b76_len; i++) {
-            int idx = base76_char_to_index(b76_1[i]);
-            for (int b = 6; b >= 0; b--) {
-                bits[bit_len++] = ((idx >> b) & 1) ? '1' : '0';
-            }
-        }
-        bits[bit_len] = '\0';
-
-        /* Convert each '0'/'1' to decimal 48/49 then to Base76 and append */
-        size_t out_cap = bit_len * 3 + 1;
-        char *outbuf = malloc(out_cap);
-        if (!outbuf) { perror("malloc"); exit(1); }
-        size_t out_len = 0;
-
-        for (size_t i = 0; i < bit_len; i++) {
-            unsigned int val = (bits[i] == '0') ? 48u : 49u;
-            char *b76 = dec_to_base76(val);
-            size_t l = strlen(b76);
-            if (out_len + l + 1 >= out_cap) {
-                out_cap = (out_len + l + 1) * 2;
-                outbuf = realloc(outbuf, out_cap);
-                if (!outbuf) { perror("realloc"); exit(1); }
-            }
-            memcpy(outbuf + out_len, b76, l);
-            out_len += l;
-            free(b76);
-        }
-
-        if (outfile) {
-            fwrite(outbuf, 1, out_len, outf);
-        } else {
-            fwrite(outbuf, 1, out_len, stdout);
-            fputc('\n', stdout);
-        }
-
-        free(b76_1);
-        free(bits);
-        free(outbuf);
+        if (!outfile) fputc('\n', stdout);
     } else {
-        /* Reverse pipeline */
-        char *encoded = malloc(input_len + 1);
-        if (!encoded) { perror("malloc"); exit(1); }
-        memcpy(encoded, input, input_len);
-        encoded[input_len] = '\0';
+        /* Reverse streaming: reconstruct digits from bits and emit bytes */
+        struct rev_state st;
+        st.digit_buf_len = 0;
+        st.bitbuf = 0;
+        st.bits_collected = 0;
+        st.outf = outf;
 
-        size_t elen = strlen(encoded);
-        char *ascii01 = malloc(elen + 1);
-        if (!ascii01) { perror("malloc"); exit(1); }
-        size_t a_len = 0;
-
-        for (size_t i = 0; i < elen; i++) {
-            int dec = base76_char_to_index(encoded[i]);
-            if (dec == 48) ascii01[a_len++] = '0';
-            else if (dec == 49) ascii01[a_len++] = '1';
-            else {
-                fprintf(stderr, "Invalid encoded bit: %c (DEC=%d)\n", encoded[i], dec);
+        for (size_t i = 0; i < input_len; i++) {
+            unsigned char ch = input[i];
+            int dec = base76_lookup[ch];
+            if (dec < 0) {
+                fprintf(stderr, "Invalid Base76 character '%c'\n", ch);
+                exit(1);
+            }
+            if (dec == 48 || dec == 49) {
+                unsigned int bit = (dec == 49) ? 1u : 0u;
+                st.bitbuf = (st.bitbuf << 1) | bit;
+                st.bits_collected++;
+                if (st.bits_collected == 7) {
+                    unsigned int idx = st.bitbuf & 0x7F;
+                    if (idx >= BASE76_ALPHABET_LEN) {
+                        fprintf(stderr, "Error: 7-bit index out of range: %u\n", idx);
+                        exit(1);
+                    }
+                    char outch = index_to_base76(idx);
+                    st.digit_buf[st.digit_buf_len++] = outch;
+                    st.bits_collected = 0;
+                    st.bitbuf = 0;
+                    rev_emit_token_if_possible(&st);
+                }
+            } else {
+                fprintf(stderr, "Invalid encoded bit: %c (DEC=%d)\n", ch, dec);
                 exit(1);
             }
         }
-        ascii01[a_len] = '\0';
-
-        char *b76_1 = malloc(a_len / 7 + 2);
-        if (!b76_1) { perror("malloc"); exit(1); }
-        size_t b76_len = 0;
-        size_t pos = 0;
-
-        while (a_len - pos >= 7) {
-            unsigned int idx = 0;
-            for (int bit = 0; bit < 7; bit++) {
-                idx <<= 1;
-                if (ascii01[pos + bit] == '1')
-                    idx |= 1;
-            }
-            pos += 7;
-            if (idx >= BASE76_ALPHABET_LEN) {
-                fprintf(stderr, "Error: 7-bit index out of range: %u\n", idx);
-                exit(1);
-            }
-            b76_1[b76_len++] = index_to_base76(idx);
-        }
-        b76_1[b76_len] = '\0';
-
-        size_t out_len = 0;
-        unsigned char *out_bytes = base76_to_bytes(b76_1, &out_len);
-
-        if (verbose && !file_stream) {
-            print_stage1_tokens_from_ascii_stderr(out_bytes, out_len);
-        }
-
-        if (outfile) {
-            fwrite(out_bytes, 1, out_len, outf);
-        } else {
-            fwrite(out_bytes, 1, out_len, stdout);
-        }
-
-        free(encoded);
-        free(ascii01);
-        free(b76_1);
-        free(out_bytes);
+        rev_finalize_tokens(&st);
     }
 
     if (outfile) fclose(outf);
