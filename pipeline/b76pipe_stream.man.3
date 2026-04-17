@@ -1,0 +1,136 @@
+.Dd 17 April 2026
+.Dt B76PIPE_STREAM 1 "b76pipe_stream" "User Commands"
+.Sh NAME
+b76pipe_stream \- streaming Base76 7‑bit binary pipeline encoder/decoder
+.Sh SYNOPSIS
+.Nm b76pipe_stream
+.Op Fl r
+.Op Fl i Ar infile
+.Op Fl o Ar outfile
+.Op Fl v
+.Op Ar message
+.Sh DESCRIPTION
+The
+.Nm
+program is a streaming, character‑by‑character implementation of a Base76 7‑bit pipeline encoder and decoder.
+
+It is intended for use in streaming contexts where output should appear as input is processed rather than waiting for the entire input to be available. The program preserves the original command‑line interface and per‑byte Stage 1 token semantics where possible while producing continuous output.
+
+.PP
+By default the program runs in the forward (encode) direction. With the
+.Fl r
+option it runs in reverse (decode) mode.
+
+.Sh PIPELINE
+.Ss Forward (encode)
+The forward pipeline processes input one byte at a time:
+
+.Bl -tag -width indent
+.It
+Read input bytes (from a file, stdin, or message arguments).
+.It
+For each input byte produce a Stage 1 token: the byte's decimal value is converted to a Base76 token. When
+.Fl v
+is specified these per‑byte tokens are printed to standard error separated by single spaces.
+.It
+Each Base76 digit of the Stage 1 token is mapped to its index (0..75). Each index is emitted as a 7‑bit binary value (most significant bit first). Each bit is converted to decimal 48 or 49 and then encoded to Base76; those Base76 tokens are streamed to the final output.
+.El
+
+.Ss Reverse (decode)
+The reverse pipeline decodes a continuous Base76 stream:
+
+.Bl -tag -width indent
+.It
+Read a stream of Base76 characters.
+.It
+Map Base76 characters to decimal indices; indices 48 and 49 are interpreted as bits '0' and '1'.
+.It
+Group bits into 7‑bit values (MSB first) and convert each to a Base76 digit (index 0..75).
+.It
+Reassemble Base76 digits into per‑byte Stage 1 tokens (one or two Base76 digits per original byte), convert tokens back to bytes and write decoded bytes to the output as soon as token boundaries are resolved.
+.El
+
+.Sh OPTIONS
+.Tp
+.Fl r
+Run in reverse (decode) mode.
+.Tp
+.Fl i Ar infile
+Read input from
+.Ar infile .
+Use
+.Fl -
+to read from standard input.
+.Tp
+.Fl o Ar outfile
+Write final output to
+.Ar outfile
+(binary safe). If omitted, final output is written to standard output.
+.Tp
+.Fl v
+Print Stage 1 intermediate tokens (per‑byte Base76) to standard error. When used with streaming, tokens are printed as bytes arrive; tokens are separated by single spaces and the block is terminated by a blank line when input ends.
+.Tp
+.Fl h
+Show help and exit.
+.Tp
+.\-\-version
+Print version information and exit.
+
+.Sh EXIT STATUS
+The program exits with status zero on success. Non‑zero exit codes indicate an error; diagnostic messages are printed to standard error.
+
+.Sh ERRORS
+.Tp
+Invalid Base76 character
+If the input contains a character not present in the program's Base76 alphabet the program prints an error message and exits.
+.Tp
+Invalid encoded bit
+If a decoded decimal index is not 48 or 49 where a bit is expected the program prints an error and exits.
+.Tp
+7‑bit index out of range
+If a reconstructed 7‑bit value is outside the valid 0..75 range an error is reported and the program exits.
+
+.Sh EXAMPLES
+.Bl -tag -width indent
+.It
+Encode a file and write to stdout:
+.Pp
+.Nf
+./b76pipe_stream -i input.bin
+.Nf
+.It
+Decode a Base76 stream from a file and write binary output:
+.Pp
+.Nf
+./b76pipe_stream -r -i encoded.b76 -o output.bin
+.Nf
+.It
+Stream from stdin and print Stage 1 tokens to stderr:
+.Pp
+.Nf
+cat file | ./b76pipe_stream -v
+.Nf
+.El
+
+.Sh NOTES
+This streaming variant processes input per‑byte and emits output continuously. The original non‑streaming implementation converts the entire input to a Base76 digit stream using big‑integer arithmetic before producing the 7‑bit output; that global conversion is inherently non‑streaming. If exact bit‑for‑bit parity with the original global conversion is required for forward encoding, buffer the entire input and run the original conversion before emitting the final stream.
+
+.PP
+When transporting encoded streams through text channels (CSV, editors, email), encode binary payloads (for example Base64 or hex) and preserve length/checksum metadata to avoid silent corruption.
+
+.Sh FILES
+.Bl -tag -width indent
+.It Pa base76_alphabet.h
+Defines the
+.I BASE76_ALPHABET
+used by the program; the alphabet must be exactly 76 characters.
+.El
+
+.Sh AUTHOR
+Graduate. Damian Williamson, Willtech, Swan Hill, Victoria, Australia.
+
+.Sh CREDITS
+Microsoft Copilot — pipeline design, commentary, and integration sketch.
+
+.Sh SEE ALSO
+.Xr b76pipe 3
