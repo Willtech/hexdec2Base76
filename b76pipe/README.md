@@ -1,17 +1,26 @@
-# b76pipe — Compiled Base76 Streaming Pipeline (Single Binary)
+```markdown
+# b76pipe — Base76 7‑bit Streaming Pipeline Encoder/Decoder
 
-`b76pipe` is a compiled, streaming‑capable Base76 encoder/decoder designed as a high‑performance companion to the **hexdec2Base76** project. It provides a reversible byte‑to‑Base76 pipeline, supports custom alphabets, and operates without loading the entire input into memory. This makes it suitable for large files, embedded systems, and constrained environments where predictable behaviour and 7‑bit safety are essential.
+`b76pipe` is a compiled Base76 encoder/decoder implementing the reversible
+7‑bit binary pipeline used in the **hexdec2Base76** project.  
+This version operates in a **file‑stream topology**: input is read in chunks,
+Stage‑1 output (if enabled) is emitted immediately to **stderr**, and the final
+Stage‑2 output is written only once at the end.
+
+Although input is streamed, the Base76 pipeline requires maintaining a growing
+big‑integer representation of the entire message. Therefore, memory usage
+increases with input size.
 
 ---
 
 ## Credits
 
-**Source Code produced by **Graduate. Damian Williamson**  
-**Willtech** Swan Hill, Victoria, Australia  
+**Source Code:** Graduate. Damian Williamson  
+**Willtech**, Swan Hill, Victoria, Australia  
 
 **Compiled pipeline variant based on the hexdec2Base76 project**  
 
-**Converted & annotated with reference header by**  
+**Design, commentary & integration sketch:**  
 Professor. Damian A. James Williamson Grad. + Copilot  
 
 ---
@@ -19,25 +28,24 @@ Professor. Damian A. James Williamson Grad. + Copilot
 ## Features
 
 - **Single binary:** `b76pipe`
-- **Streaming pipeline:**  
-  - Forward: bytes → Base76 tokens  
-  - Reverse: Base76 tokens → bytes  
-  - No full‑file buffering; processes arbitrarily large inputs
-- **Input options:**  
-  - `-i infile` — read from file  
-  - `message` argument — used when `-i` is not provided
-- **Output options:**  
-  - `-o outfile` — write to file  
+- **Streaming input topology**
+  - Reads input in chunks (stdin or file)
+  - Stage‑1 output (`-v`) printed immediately to **stderr**
+  - Stage‑2 output printed only once at the end
+- **Forward mode:** bytes → Base76 (7‑bit pipeline)
+- **Reverse mode:** Base76 → bytes
+- **Input options:**
+  - `-i infile` — read from file (or `-` for stdin)
+  - message arguments when `-i` is not used
+- **Output options:**
+  - `-o outfile` — write final Stage‑2 output to file
   - default: stdout
-- **Alphabet control:**  
-  - Default alphabet from `base76_alphabet.h`  
-  - Override with `--alpha alphabet_file`
-- **7‑bit safe:**  
-  - Only ASCII `< 128` characters used in the alphabet
-- **CLI support:**  
-  - `-h`, `--help`  
-  - `--version`  
-  - `-r` for reverse mode
+- **Diagnostic options:**
+  - `-v` — print Stage‑1 tokens to **stderr**
+  - `--file-stream` — accepted for compatibility (no behavioural change)
+- **Help/version:**
+  - `-h`, `--help`
+  - `--version`
 
 ---
 
@@ -66,7 +74,7 @@ make clean
 ### Forward pipeline (bytes → Base76)
 
 ```sh
-./b76pipe "Hello"
+./b76pipe "Hello world"
 ```
 
 ### Forward pipeline from file
@@ -75,19 +83,15 @@ make clean
 ./b76pipe -i input.bin
 ```
 
-### Forward pipeline to file
+### Forward pipeline with Stage‑1 output
 
 ```sh
-./b76pipe -i input.bin -o output.b76
+./b76pipe -v -i input.bin
 ```
+
+(Stage‑1 tokens appear on **stderr**, Stage‑2 on **stdout**)
 
 ### Reverse pipeline (Base76 → bytes)
-
-```sh
-./b76pipe -r "A1 B2 C3"
-```
-
-### Reverse pipeline from file
 
 ```sh
 ./b76pipe -r -i encoded.b76 -o decoded.bin
@@ -97,65 +101,32 @@ make clean
 
 ## Streaming Behaviour
 
-`b76pipe` processes data incrementally:
+`b76pipe` reads input incrementally in chunks.  
+However, due to the Base76 big‑integer pipeline, the program must maintain a
+growing big‑integer representation of the entire message.
 
-- **Forward mode:** reads one byte at a time, emits one Base76 token at a time  
-- **Reverse mode:** reads one token at a time, emits one byte at a time  
+**This means:**
 
-Because it never loads the entire input into memory, it can process **arbitrarily large inputs**, limited only by disk and I/O bandwidth.
+- Input is streamed  
+- Stage‑1 output is streamed  
+- **But memory usage grows with input size**
 
----
-
-## Custom Alphabet (`--alpha`)
-
-You can override the default Base76 alphabet:
-
-```sh
-./b76pipe --alpha my_alphabet.txt "Hello"
-```
-
-### Alphabet file rules
-
-The alphabet file may contain arbitrary content. The program constructs the alphabet as follows:
-
-- Only characters with ASCII value `< 128` are considered (7‑bit safe)
-- Whitespace is ignored
-- Duplicate characters are ignored
-- The first **76 unique** 7‑bit characters encountered form the alphabet
-- If fewer than 76 unique characters are found, the program exits with an error
-
-Example:
-
-```
-0123456789
-ABCDEFGHIJKLMNOPQRSTUVWXYZ
-abcdefghijklmnopqrstuvwxyz
-!@#$%^&*()_+[]
-```
-
-Whitespace and line breaks are ignored.
+This is required for exact reversibility of the Base76 7‑bit pipeline.
 
 ---
 
 ## Exit Codes
 
-`b76pipe` returns well‑defined exit codes for scripting and automation:
+`b76pipe` returns:
 
 | Code | Meaning |
 |------|---------|
 | **0** | Success |
-| **1** | General usage error (bad flags, missing args, file open failure) |
-| **2** | Alphabet file error (invalid, unreadable, insufficient characters) |
-| **3** | Invalid Base76 token during reverse mode |
-| **4** | Token too long (exceeds internal buffer) |
-| **5** | Internal pipeline error |
-| **6** | Temporary stream creation failure |
-| **7** | Output write failure (I/O error, disk full, etc.) |
+| **1** | Usage error, file I/O error, or invalid Base76 input |
 
 ---
 
 ## Version
 
 `b76pipe` version **1.0.0.2026.04.15**
-
----
+```
