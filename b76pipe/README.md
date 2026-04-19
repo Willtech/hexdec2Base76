@@ -1,4 +1,3 @@
-```markdown
 # b76pipe — Base76 7‑bit Streaming Pipeline Encoder/Decoder
 
 `b76pipe` is a compiled Base76 encoder/decoder implementing the reversible
@@ -129,4 +128,3 @@ This is required for exact reversibility of the Base76 7‑bit pipeline.
 ## Version
 
 `b76pipe` version **1.0.0.2026.04.15**
-```
