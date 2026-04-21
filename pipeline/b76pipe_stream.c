@@ -2,11 +2,32 @@
  * b76pipe_stream.c — Streaming-friendly Base76 7‑bit pipeline encoder/decoder
  *
  * Source Code produced by Willtech 2023–2026
- * Compiled pipeline variant based on hexdec2Base76 project
- * Converted & annotated with reference header by
- * Professor. Damian A. James Williamson Grad. + Copilot
+ * Part of the Willtech Base76 Pipeline Suite
  *
- * Version: B76PIPE_VERSION (see b76pipe.h)
+ * Design, architecture and reference implementation:
+ *   Professor Damian A. James Williamson (Willtech)
+ *
+ * Implementation, documentation and extended diagnostic tooling:
+ *   Professor Damian A. James Williamson + Copilot
+ *
+ * This program provides a fully reversible Base76 7‑bit pipeline encoder/
+ * decoder with strict alphabet validation, deterministic forward/reverse
+ * semantics, and a comprehensive internal selftest facility.
+ *
+ * Selftest modes:
+ *   --selftest
+ *       Run built‑in diagnostic message and exit.
+ *
+ *   --selftest "string"
+ *       Run selftest using the provided string and exit.
+ *
+ *   --selftest -i file
+ *       Run selftest using the contents of <file> and exit.
+ *
+ *   --selftest -i file -o file
+ *       Run selftest, then forward‑encode <file> to <outfile>,
+ *       reverse‑decode <outfile>, compare to original, then exit.
+ *
  * License: Willtech Open Technical Artifact License (WOTAL)
  *============================================================================*/
 
@@ -366,15 +387,38 @@ usage(const char *prog)
         "Options:\n"
         "  -i <file>        Input file (default: stdin)\n"
         "  -o <file>        Output file (default: stdout)\n"
-        "  -v               Verbose: write Stage-1 tokens to stderr\n"
+        "  -v               Verbose mode: print Stage‑1 Base76 tokens to stderr\n"
         "  -r               Reverse mode (decode)\n"
-        "  --alpha <file>   Load custom Base76 alphabet (first 76 unique 7-bit chars)\n"
+        "\n"
+        "  --alpha <file>   Load custom Base76 alphabet.\n"
+        "                   Rules:\n"
+        "                     • First 76 unique 7‑bit characters are used\n"
+        "                     • Whitespace is ignored\n"
+        "                     • Duplicates are ignored\n"
+        "                     • Characters >= 128 are ignored\n"
+        "                     • Error if fewer than 76 unique chars\n"
+        "\n"
         "  --selftest [s]   Run internal forward/reverse validation.\n"
-        "                   Optional string s overrides built-in test message.\n"
-        "                   If -i is provided, file is used for selftest.\n"
-        "                   Creates .b76pipe_stream.selftest.i and .o\n"
+        "                   Modes:\n"
+        "                     --selftest\n"
+        "                        Use built‑in diagnostic message and exit.\n"
+        "\n"
+        "                     --selftest \"string\"\n"
+        "                        Use provided string and exit.\n"
+        "\n"
+        "                     --selftest -i <file>\n"
+        "                        Use contents of <file> and exit.\n"
+        "\n"
+        "                     --selftest -i <file> -o <file>\n"
+        "                        Run selftest, then forward‑encode input to <outfile>,\n"
+        "                        reverse‑decode <outfile>, compare to original, then exit.\n"
+        "\n"
+        "                   Notes:\n"
+        "                     • Selftest always exits after completion.\n"
+        "                     • It is an error to specify both a string and -i file.\n"
+        "\n"
         "  -h, --help       Show this help\n"
-        "  --version        Show version\n",
+        "  --version        Show program version\n",
         prog
     );
     exit(1);
