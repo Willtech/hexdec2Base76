@@ -1,0 +1,82 @@
+.Dd April 21, 2026
+.Dt BASE76_ALPHABET 3
+.Os
+.Sh NAME
+.Nm base76_alphabet
+.Nd Base76 alphabet definition and loader rules
+.Sh SYNOPSIS
+.In base76_alphabet.h
+.Sh DESCRIPTION
+The
+.Nm
+interface defines the 76-character Base76 alphabet used by the Willtech
+Base76 Pipeline Suite, including
+.Xr b76pipe_stream 3
+and
+.Xr b76pipe 1 .
+
+.Pp
+The alphabet is a sequence of 76 unique 7-bit characters.  The default
+alphabet is compiled into the binary via the macro:
+.Pp
+.Dl #define BASE76_ALPHABET "..."
+.Pp
+and its length is validated using:
+.Pp
+.Dl #define BASE76_ALPHABET_LEN 76
+
+.Sh CUSTOM ALPHABETS
+A custom alphabet may be supplied at runtime using the
+.Fl - -alpha
+option of
+.Xr b76pipe_stream 3 .
+The loader applies the following rules:
+
+.Bl -bullet
+.It
+Only 7-bit characters (0–127) are considered.
+.It
+Whitespace is ignored.
+.It
+Duplicate characters are ignored.
+.It
+The first 76 unique characters encountered form the alphabet.
+.It
+If fewer than 76 unique characters are found, the program exits with an error.
+.El
+
+.Pp
+The alphabet determines both encoding and decoding behaviour.  All Base76
+streams must be encoded and decoded using the same alphabet; mismatches will
+cause decoding failures.
+
+.Sh IMPLEMENTATION NOTES
+The alphabet is stored in a 76-byte array:
+.Pp
+.Dl static unsigned char alphabet[76];
+.Pp
+A lookup table maps each possible byte value to its Base76 index:
+.Pp
+.Dl static int base76_lookup[256];
+.Pp
+Invalid characters produce an error during decoding.
+
+.Sh FILES
+.Bl -tag -width Ds
+.It Pa base76_alphabet.h
+Header defining the default Base76 alphabet and length macro.
+.El
+
+.Sh SEE ALSO
+.Xr b76pipe_stream 3 ,
+.Xr b76pipe 1
+
+.Sh AUTHORS
+.An Professor Damian A. James Williamson Grad.
+Willtech, Swan Hill, Victoria, Australia
+
+.Sh COLLABORATION
+Microsoft Copilot assisted with documentation and tooling.
+
+.Sh COPYRIGHT
+Willtech Open Technical Artifact License (WOTAL)

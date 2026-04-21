@@ -39,7 +39,7 @@
 #include <string.h>
 #include <errno.h>
 
-#include "b76pipe.h"
+#include "b76pipe_stream.h"
 #include "base76_alphabet.h"
 
 /*==============================================================================
