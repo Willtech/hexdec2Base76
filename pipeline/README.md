@@ -149,11 +149,11 @@ cat file | ./b76pipe_stream
 ## Credits
 
 **Design, architecture, reference implementation:**  
-Professor Damian A. James Williamson Grad.  
+Graduate. Damian Williamson  
 Willtech, Swan Hill, Victoria, Australia  
 
 **Implementation, documentation, diagnostic tooling:**  
-Professor Damian A. James Williamson Grad. + Copilot  
+Professor. Damian A. James Williamson Grad. + Copilot  
 
 Part of the **Willtech Base76 Pipeline Suite**
 
