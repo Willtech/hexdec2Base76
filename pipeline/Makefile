@@ -13,7 +13,7 @@ LDFLAGS =
 
 PREFIX  = /usr/local
 BINDIR  = $(PREFIX)/bin
-MANDIR  = $(PREFIX)/share/man/man3
+MANDIR  = $(PREFIX)/man/man3
 
 TARGET  = b76pipe_stream
 OBJS    = b76pipe_stream.o
