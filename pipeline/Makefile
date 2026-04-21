@@ -1,10 +1,5 @@
 #==============================================================================
 # Makefile for compiled b76pipe_stream sub-project
-#
-# Source Code produced by Willtech 2023–2026
-# Compiled pipeline variant based on hexdec2Base76 project
-# Converted & annotated with reference header by
-# Professor. Damian A. James Williamson Grad. + Copilot
 #==============================================================================
 
 CC      = cc
@@ -35,28 +30,23 @@ install: $(TARGET)
 
 	@echo "Installing manpages to $(MANDIR)"
 	mkdir -p $(MANDIR)
-	@if [ -f b76pipe_stream.3 ]; then \
-		install -m 644 b76pipe_stream.3 $(MANDIR)/b76pipe_stream.3; \
-		echo "  installed b76pipe_stream.3"; \
-	else \
-		echo "  b76pipe_stream.3 not found, skipping"; \
-	fi
-	@if [ -f base76_alphabet.3 ]; then \
-		install -m 644 base76_alphabet.3 $(MANDIR)/base76_alphabet.3; \
-		echo "  installed base76_alphabet.3"; \
-	else \
-		echo "  base76_alphabet.3 not found, skipping"; \
-	fi
+	-test -f b76pipe_stream.3 && install -m 644 b76pipe_stream.3 $(MANDIR)/b76pipe_stream.3
+	-test -f base76_alphabet.3 && install -m 644 base76_alphabet.3 $(MANDIR)/base76_alphabet.3
 
 uninstall:
 	@echo "Removing $(TARGET) from $(BINDIR)"
-	rm -f $(BINDIR)/$(TARGET)
+	-rm -f $(BINDIR)/$(TARGET)
 
 	@echo "Removing manpages from $(MANDIR)"
-	rm -f $(MANDIR)/b76pipe_stream.3
-	rm -f $(MANDIR)/base76_alphabet.3
+	-rm -f $(MANDIR)/b76pipe_stream.3
+	-rm -f $(MANDIR)/base76_alphabet.3
+
+test: $(TARGET)
+	@echo "Running Base76 pipeline test suite"
+	@chmod +x tests/test.sh
+	cd tests && ./test.sh
 
 clean:
 	rm -f $(TARGET) $(OBJS)
 
-.PHONY: all clean install uninstall
+.PHONY: all clean install uninstall test
