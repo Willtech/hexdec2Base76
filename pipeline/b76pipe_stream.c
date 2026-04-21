@@ -5,7 +5,7 @@
  * Part of the Willtech Base76 Pipeline Suite
  *
  * Design, architecture and reference implementation:
- *   Professor Damian A. James Williamson (Willtech)
+ *   Graduate. Damian Williamson (Willtech)
  *
  * Implementation, documentation and extended diagnostic tooling:
  *   Professor Damian A. James Williamson + Copilot
