@@ -77,6 +77,11 @@ doas make install
 
 After installation, the manpages are available:
 
+Run:
+```sh
+doas makewhatis
+```
+
 ```sh
 man 3 b76pipe_stream
 man 3 base76_alphabet
