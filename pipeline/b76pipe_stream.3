@@ -1,128 +1,171 @@
-.Dd April 21, 2026
+.\" ============================================================================
+.\" b76pipe_stream.3 — Willtech Base76 Pipeline Suite Manual
+.\" ============================================================================
+.Dd April 23, 2026
 .Dt B76PIPE_STREAM 3
 .Os
 .Sh NAME
 .Nm b76pipe_stream
-.Nd streaming Base76 7-bit pipeline encoder/decoder
+.Nd streaming reversible Base76 Stage‑1/Stage‑2 encoder/decoder
+
 .Sh SYNOPSIS
 .Nm b76pipe_stream
 .Op Fl r
 .Op Fl v
 .Op Fl i Ar file
 .Op Fl o Ar file
-.Op Fl - -alpha Ar file
-.Op Fl - -selftest Op Ar string
+.Op Fl -alpha Ar file
+.Op Fl -stage1 Op Ar tokens
+.Op Fl -selftest Op Ar string
 .Op Ar message ...
+
 .Sh DESCRIPTION
 The
 .Nm
-utility implements a streaming, reversible Base76 7-bit binary pipeline
-encoder and decoder.  It is part of the Willtech Base76 Pipeline Suite and is
-designed for use with pipes, FIFOs, device files, and long-running streams
-where output must be produced incrementally as input arrives.
+utility implements the canonical Willtech Base76 reversible pipeline as
+defined in the Base76 Pipeline Specification (Base76.spec.md).  The pipeline
+consists of two deterministic, reversible stages:
 
-.Pp
-Unlike the non-streaming
-.Xr b76pipe 3 ,
-which buffers the entire input into a big integer before encoding,
-.Nm
-processes data byte-by-byte and emits output continuously.  The program
-preserves deterministic forward and reverse semantics and includes a
-comprehensive internal self-test facility.
+.Bl -tag -width Ds
+.It Stage‑1
+Byte‑to‑Base76 tokenization.  Each byte (0–255) is converted into a Base76
+number using the active alphabet.  Tokens are whitespace‑separated.
+.It Stage‑2
+Bit‑level Base76 encoding.  Each Stage‑1 digit is expanded into 7 bits, and
+each bit is encoded as a Base76 digit representing decimal 48 or 49.
+.El
+
+The forward pipeline is:
+
+.Bd -literal -offset indent
+Bytes → Stage‑1 → Stage‑2
+.Ed
+
+The reverse pipeline is:
+
+.Bd -literal -offset indent
+Stage‑2 → Stage‑1 → Bytes
+.Ed
+
+Both stages are fully reversible and 7‑bit clean.  The program is designed for
+streaming environments such as pipes, FIFOs, device files, and long‑running
+producers.
 
 .Sh MODES OF OPERATION
 .Ss Forward Encoding (default)
-Forward mode converts raw bytes into a two-stage Base76 representation:
-.Bl -bullet
-.It
-Stage 1: each input byte is converted to a Base76 digit (0–75).
-.It
-Stage 2: each Base76 digit is expanded into a 7-bit sequence, and each bit is
-encoded as a Base76 digit representing ASCII '0' (48) or '1' (49).
-.El
-.Pp
+Forward mode converts raw bytes into Stage‑1 tokens and then into Stage‑2
+Base76 output.  Output is emitted incrementally as input arrives.
+
 If
 .Fl v
-is specified, Stage 1 tokens are printed to
+is specified, Stage‑1 tokens are written to
 .Stderr ,
-while Stage 2 output is streamed to
+while Stage‑2 output is written to
 .Stdout
 or to the file specified by
 .Fl o .
 
 .Ss Reverse Decoding
-Reverse mode reconstructs the 7-bit bitstream from Stage 2 Base76 characters,
-reassembles Stage 1 digits, and emits decoded bytes as soon as enough bits are
-available to resolve a byte.  Whitespace in the encoded stream is ignored.
+Reverse mode reconstructs the bitstream from Stage‑2 Base76 characters,
+reassembles Stage‑1 digits, and emits decoded bytes.
+
+Whitespace in the encoded stream is ignored.
+
+.Ss Reverse Decoding of Stage‑1 Tokens
+When
+.Fl r
+is combined with
+.Fl -stage1 ,
+the program bypasses Stage‑2 entirely and decodes Stage‑1 tokens directly:
+
+.Bd -literal -offset indent
+-r --stage1  →  Stage‑1 → bytes
+.Ed
+
+This mode is used when Stage‑1 tokens have already been extracted.
+
+.Sh STAGE‑1 FORMAT
+Stage‑1 tokens are Base76 numbers encoded using the active alphabet.  Each
+token represents a single byte.
+
+Example:
+.Bd -literal -offset indent
+T  → 18
+h  → 1S
+i  → 1T
+s  → 1d
+.Ed
+
+Stage‑1 is used for:
+.Bl -bullet -offset indent
+.It human‑readable inspection
+.It verbose debugging
+.It Stage‑1 input mode
+.It self‑test diagnostics
+.El
+
+.Sh STAGE‑2 FORMAT
+Stage‑2 is a 7‑bit clean encoding suitable for restricted channels.
+
+Each Stage‑1 digit is expanded into 7 bits.  Each bit is encoded as:
+
+.Bl -tag -width Ds -offset indent
+.It 0
+Base76 encoding of decimal 48
+.It 1
+Base76 encoding of decimal 49
+.El
+
+The output is a continuous Base76 stream with no whitespace.
 
 .Sh ALPHABET HANDLING
-The Base76 alphabet consists of 76 unique 7-bit characters.  The default
-alphabet is compiled into the binary via
-.Pa base76_alphabet.h .
+The Base76 alphabet consists of 76 unique 7‑bit characters.  The default
+alphabet is compiled into the binary.
 
-.Pp
 A custom alphabet may be loaded using:
 .Pp
 .Dl --alpha file
 .Pp
 The loader applies the following rules:
-.Bl -bullet
-.It
-Only 7-bit characters (0–127) are considered.
-.It
-Whitespace is ignored.
-.It
-Duplicate characters are ignored.
-.It
-The first 76 unique characters encountered form the alphabet.
-.It
-If fewer than 76 unique characters are found, the program exits with an error.
+.Bl -bullet -offset indent
+.It only 7‑bit characters (0–127) are considered
+.It whitespace is ignored
+.It duplicate characters are ignored
+.It the first 76 unique characters form the alphabet
+.It fewer than 76 unique characters is a fatal error
 .El
 
-.Sh SELF-TEST FACILITY
+.Sh SELF‑TEST FACILITY
 The
 .Fl -selftest
-option performs deterministic forward and reverse validation.  Self-test always
-exits after completion and never continues into normal pipeline operation.
+option performs deterministic forward and reverse validation.  Self‑test
+always exits after completion.
 
-.Pp
-The following modes are supported:
+Supported forms:
 .Bl -tag -width Ds
 .It Fl -selftest
-Use the built-in diagnostic message and exit.
+Use the built‑in diagnostic message.
 .It Fl -selftest Ar string
-Use the provided string as test input and exit.
+Use the provided string.
 .It Fl -selftest Fl i Ar file
 Use the contents of
-.Ar file
-as test input and exit.
+.Ar file .
 .It Fl -selftest Fl i Ar file Fl o Ar file
-Run the full internal self-test, then:
-.Bl -bullet
-.It
-forward-encode the input file to the specified output file,
-.It
-reverse-decode the output file,
-.It
-compare the decoded data to the original input,
-.It
-exit with success or failure.
+Run the full internal self‑test, then:
+.Bl -bullet -offset indent
+.It forward‑encode the input file to the output file
+.It reverse‑decode the output file
+.It compare the decoded data to the original
 .El
 .El
 
-.Pp
-Self-test always writes:
-.Bl -bullet
-.It
-.Pa .b76pipe_stream.selftest.i
-(original input)
-.It
-.Pa .b76pipe_stream.selftest.o
-(encoded Stage 2 output)
+Self‑test always writes:
+.Bl -bullet -offset indent
+.It Pa .b76pipe_stream.selftest.i
+.It Pa .b76pipe_stream.selftest.o
 .El
 
-.Pp
-It is an error to specify both a self-test string and
+It is an error to specify both a self‑test string and
 .Fl i .
 
 .Sh OPTIONS
@@ -130,16 +173,16 @@ It is an error to specify both a self-test string and
 .It Fl i Ar file
 Read input from
 .Ar file .
-If omitted, input is read from standard input.
 .It Fl o Ar file
 Write output to
 .Ar file .
-If omitted, output is written to standard output.
 .It Fl r
 Reverse (decode) mode.
 .It Fl v
-Verbose mode.  Print Stage 1 Base76 tokens to
+Verbose mode.  Print Stage‑1 tokens to
 .Stderr .
+.It Fl - -stage1 Op Ar tokens
+Interpret input as Stage‑1 tokens.  In reverse mode, decode Stage‑1 directly.
 .It Fl - -alpha Ar file
 Load a custom Base76 alphabet.
 .It Fl - -selftest Op Ar string
@@ -153,16 +196,13 @@ Display program version.
 .Sh STREAMING BEHAVIOUR
 .Nm
 does not buffer the entire input and is safe for use with:
-.Bl -bullet
-.It
-pipes
-.It
-FIFOs
-.It
-device files (e.g.\& Pa /dev/tty , Pa /dev/random )
-.It
-long-running producers
+.Bl -bullet -offset indent
+.It pipes
+.It FIFOs
+.It device files
+.It long‑running producers
 .El
+
 Output is emitted as soon as enough data is available to produce the next
 token or byte.
 
@@ -171,37 +211,47 @@ token or byte.
 .It 0
 Success.
 .It 1
-Error in input, alphabet, self-test, or pipeline operation.
+Error in input, alphabet, self‑test, or pipeline operation.
 .El
 
 .Sh FILES
 .Bl -tag -width Ds
 .It Pa .b76pipe_stream.selftest.i
-Self-test input file.
+Self‑test input file.
 .It Pa .b76pipe_stream.selftest.o
-Self-test encoded output file.
+Self‑test encoded output file.
 .El
 
 .Sh EXAMPLES
 Encode a file:
-.Pp
-.Dl $ b76pipe_stream -i message.bin -o message.b76
-.Pp
+.Bd -literal -offset indent
+$ b76pipe_stream -i message.bin -o message.b76
+.Ed
+
 Decode a Base76 file:
-.Pp
-.Dl $ b76pipe_stream -r -i message.b76 -o message.bin
-.Pp
-Verbose Stage 1 output:
-.Pp
-.Dl $ b76pipe_stream -v -i input.bin
-.Pp
-Run self-test with custom input:
-.Pp
-.Dl $ b76pipe_stream --selftest "Hello Base76"
-.Pp
-Run full file-based self-test:
-.Pp
-.Dl $ b76pipe_stream --selftest -i data.bin -o encoded.txt
+.Bd -literal -offset indent
+$ b76pipe_stream -r -i message.b76 -o message.bin
+.Ed
+
+Verbose Stage‑1 output:
+.Bd -literal -offset indent
+$ b76pipe_stream -v -i input.bin
+.Ed
+
+Decode Stage‑1 tokens directly:
+.Bd -literal -offset indent
+$ b76pipe_stream -r --stage1 "18 1S 1T 1d"
+.Ed
+
+Run self‑test with custom input:
+.Bd -literal -offset indent
+$ b76pipe_stream --selftest "Hello Base76"
+.Ed
+
+Run full file‑based self‑test:
+.Bd -literal -offset indent
+$ b76pipe_stream --selftest -i data.bin -o encoded.txt
+.Ed
 
 .Sh AUTHORS
 .An Graduate. Damian Williamson

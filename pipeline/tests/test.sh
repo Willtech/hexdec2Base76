@@ -243,7 +243,7 @@ echo "OK"
 ###############################################################################
 # 16. Built-in selftest (--selftest)
 ###############################################################################
-echo "[11] Built-in selftest (--selftest)"
+echo "[16] Built-in selftest (--selftest)"
 
 SELFTEST_OUTPUT=$($BIN --selftest)
 
@@ -269,7 +269,7 @@ echo "OK"
 ###############################################################################
 # 17. Selftest with custom string (--selftest \"string\")
 ###############################################################################
-echo "[12] Selftest with custom string"
+echo "[17] Selftest with custom string"
 
 SELFTEST_OUTPUT=$($BIN --selftest "HelloWorld123")
 
@@ -289,7 +289,7 @@ echo "OK"
 ###############################################################################
 # 18. Selftest with custom file (--selftest -i file)
 ###############################################################################
-echo "[13] Selftest with custom file"
+echo "[18] Selftest with custom file"
 
 echo "FILETEST_ABC_123" > ./selftest_input.txt
 
@@ -311,7 +311,7 @@ echo "OK"
 ###############################################################################
 # 19. Selftest error case: string + file → error
 ###############################################################################
-echo "[14] Selftest error case (string + file)"
+echo "[19] Selftest error case (string + file)"
 
 set +e
 $BIN --selftest "ABC" -i ./selftest_input.txt > /dev/null 2>&1
@@ -328,7 +328,7 @@ echo "OK"
 ###############################################################################
 # 20. Selftest combined with normal operation (--selftest -i -o)
 ###############################################################################
-echo "[15] Selftest combined with normal operation"
+echo "[20] Selftest combined with normal operation"
 
 $BIN --selftest -i "$MSG" -o "./combined_out.txt"
 

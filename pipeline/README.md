@@ -1,165 +1,316 @@
-# b76pipe_stream
+# Willtech Base76 Pipeline Suite  
+### Streaming‑Friendly 7‑Bit Reversible Base76 Encoding
 
-**Streaming Base76 7‑bit binary pipeline encoder/decoder**
+The Willtech Base76 Pipeline Suite provides a **fully reversible**, **stream‑safe**, **7‑bit clean** encoding pipeline designed for deterministic forward/reverse transformations of arbitrary binary data.
 
-`b76pipe_stream` is the streaming variant of the Willtech Base76 Pipeline Suite.  
-It performs fully reversible Base76 encoding/decoding using a strict 76‑character alphabet, deterministic forward/reverse semantics, and a comprehensive internal self‑test facility.  
-Unlike the non‑streaming `b76pipe`, this tool processes data incrementally and emits output continuously, making it ideal for pipelines, FIFOs, device files, and long‑running streams.
+<p align="center">
+
+  <!-- Build Status -->
+  <img src="https://img.shields.io/badge/build-passing-brightgreen.svg" alt="Build Status">
+
+  <!-- Test Suite -->
+  <img src="https://img.shields.io/badge/tests-100%25%20passing-brightgreen.svg" alt="Test Status">
+
+  <!-- Pipeline Spec -->
+  <img src="https://img.shields.io/badge/Base76%20Pipeline-Spec%201.0-blue.svg" alt="Pipeline Spec">
+
+  <!-- Stage‑1 Support -->
+  <img src="https://img.shields.io/badge/Stage--1-supported-blueviolet.svg" alt="Stage‑1 Support">
+
+  <!-- Stage‑2 Support -->
+  <img src="https://img.shields.io/badge/Stage--2-7bit%20clean-orange.svg" alt="Stage‑2 Support">
+
+  <!-- DeepWiki -->
+  <a href="https://deepwiki.com/Willtech/hexdec2Base76">
+    <img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" />
+  </a>
+
+  <!-- Platform -->
+  <img src="https://img.shields.io/badge/platform-OpenBSD%20%7C%20Linux%20%7C%20POSIX-lightgrey.svg" alt="Platform">
+
+  <!-- Language -->
+  <img src="https://img.shields.io/badge/language-C99-blue.svg" alt="Language">
+
+  <!-- License -->
+  <a href="https://github.com/Willtech/hexdec2Base76/tree/master/pipeline#license">
+    <img src="https://img.shields.io/badge/license-WOTAL-green.svg" alt="License">
+  </a>
+    <img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License" />
+  </a>
+  
+  <!-- Version -->
+  <img src="https://img.shields.io/badge/version-1.0.0.2026.04.15-yellow.svg" alt="Version">
+
+</p>
+
+
+This repository contains the reference implementation:
+
+```
+b76pipe_stream
+```
+
+which performs:
+
+- **Stage‑1**: Base76 tokenization of bytes  
+- **Stage‑2**: Bit‑level Base76 encoding (48/49 mapping)  
+- **Reverse decoding** back to bytes  
+- **Internal self‑test** for correctness  
+- **Custom alphabet loading**  
+- **Streaming‑safe I/O**  
+
+The design is documented in detail in  
+**Issue #1: “Formal Definition of the Base76 Pipeline”**  
+which establishes the canonical behaviour of Stage‑1 and Stage‑2.
 
 ---
 
-## Features
+## Overview
 
-### Forward Encoding
-- Converts raw bytes → Base76 Stage‑1 digits → 7‑bit bitstream → Base76 Stage‑2 output.
-- Stage‑1 Base76 tokens printed to **stderr** when `-v` is used.
-- Stage‑2 encoded output streamed to **stdout** or to a file via `-o`.
+The Base76 pipeline consists of **two reversible stages**:
 
-### Reverse Decoding
-- Consumes Base76 Stage‑2 characters continuously.
-- Reconstructs the 7‑bit bitstream and Stage‑1 digits.
-- Emits decoded bytes as soon as boundaries resolve.
-- Whitespace in encoded input is ignored.
+```
+Bytes → Stage‑1 → Stage‑2
+Stage‑2 → Stage‑1 → Bytes
+```
 
-### Alphabet Handling
-- Default alphabet defined in `base76_alphabet.h`.
-- Custom alphabet via `--alpha <file>`:
-  - First 76 unique 7‑bit characters are used.
-  - Whitespace ignored.
-  - Duplicates ignored.
-  - Characters ≥ 128 ignored.
-  - Error if fewer than 76 unique characters.
-
-### Self‑Test Facility
-`--selftest` provides deterministic forward/reverse validation:
-
-| Mode | Behaviour |
-|------|-----------|
-| `--selftest` | Use built‑in diagnostic message and exit. |
-| `--selftest "string"` | Use provided string and exit. |
-| `--selftest -i file` | Use contents of `<file>` and exit. |
-| `--selftest -i file -o file` | Run full selftest, then forward‑encode `<file>` to `<outfile>`, reverse‑decode it, compare to original, then exit. |
-
-Selftest always writes:
-- `.b76pipe_stream.selftest.i` — original input  
-- `.b76pipe_stream.selftest.o` — encoded Stage‑2 output  
-
-Selftest **always exits** after completion.
+Each stage is independently reversible and uses the same active Base76 alphabet.
 
 ---
 
-## Build and Test
+### Stage‑1: Byte‑to‑Base76 Token Layer
 
-Clone the repository:
+Stage‑1 converts each byte (0–255) into a **Base76 number**, encoded using the active alphabet.
 
-```sh
-git clone git@github.com:Willtech/hexdec2Base76.git
-cd hexdec2Base76/pipeline
+Example (default alphabet):
+
+```
+Byte: 84 ('T') → Stage‑1: "18"
+Byte: 104 ('h') → Stage‑1: "1S"
+Byte: 105 ('i') → Stage‑1: "1T"
+Byte: 115 ('s') → Stage‑1: "1d"
 ```
 
-Build the streaming encoder/decoder:
+Stage‑1 tokens are:
 
-```sh
-make
+- Whitespace‑separated  
+- Base76 numbers  
+- Deterministic  
+- Reversible  
+
+Stage‑1 is used for:
+
+- Human‑readable debugging (`-v`)  
+- Stage‑1 input mode (`--stage1`)  
+- Internal selftest diagnostics  
+
+---
+
+### Stage‑2: Bit‑Level Base76 Encoding
+
+Stage‑2 converts each Stage‑1 Base76 digit into **7 bits**, then encodes each bit as:
+
+- `'0'` → Base76 encoding of decimal **48**  
+- `'1'` → Base76 encoding of decimal **49**
+
+This produces a 7‑bit clean, streaming‑safe output suitable for:
+
+- Text‑only channels  
+- Logging  
+- Transport through restricted systems  
+
+Stage‑2 is the default forward output of `b76pipe_stream`.
+
+---
+
+### Reverse Pipeline
+
+Reverse decoding performs:
+
+```
+Stage‑2 → bits → Stage‑1 → bytes
 ```
 
-Run the full Base76 pipeline test suite:
+Additionally, when using:
 
-```sh
-make test
+```
+-r --stage1
 ```
 
-Install the binary and manpages on OpenBSD:
+the program bypasses Stage‑2 and decodes Stage‑1 tokens directly:
 
-```sh
-doas make install
+```
+Stage‑1 → bytes
 ```
 
-After installation, the manpages are available:
-
-Run:
-```sh
-doas makewhatis
-```
-
-```sh
-man 3 b76pipe_stream
-man 3 base76_alphabet
-```
+This is useful when Stage‑1 tokens have already been extracted.
 
 ---
 
 ## Usage
 
-### Forward Encoding
-
-```sh
-./b76pipe_stream -i infile -o outfile
+```
+b76pipe_stream [options] [message]
 ```
 
-### Reverse Decoding
+## Options
 
-```sh
-./b76pipe_stream -r -i infile.b76 -o outfile
+### I/O
+```
+-i <file>     Input file (default: stdin)
+-o <file>     Output file (default: stdout)
 ```
 
-### Streaming via stdin/stdout
-
-```sh
-cat file | ./b76pipe_stream
+### Modes
+```
+-r            Reverse decode (Stage‑2 → bytes)
+-v            Verbose: print Stage‑1 tokens to stderr
+--stage1      Treat input as Stage‑1 tokens (forward or reverse)
 ```
 
-### Verbose Stage‑1 Tokens
-
-```sh
-./b76pipe_stream -v -i infile
+### Alphabet
+```
+--alpha <file>
+    Load custom Base76 alphabet.
+    Must contain at least 76 unique 7‑bit characters.
 ```
 
-### Custom Alphabet
-
-```sh
-./b76pipe_stream --alpha alphabet.txt -i infile
+### Selftest
+```
+--selftest
+--selftest "string"
+--selftest -i <file>
+--selftest -i <file> -o <file>
 ```
 
-### Self‑Test Examples
+Selftest performs:
 
-```sh
-./b76pipe_stream --selftest
-./b76pipe_stream --selftest "HelloWorld123"
-./b76pipe_stream --selftest -i message.bin
-./b76pipe_stream --selftest -i message.bin -o encoded.txt
+- Internal forward/reverse validation  
+- File‑based forward/reverse validation  
+- Writes `.b76pipe_stream.selftest.i` and `.o`  
+
+---
+
+## Examples
+
+### Forward encode (stdin → stdout)
+
+```
+echo "Hello" | b76pipe_stream
+```
+
+### Forward encode with Stage‑1 input
+
+```
+b76pipe_stream --stage1 "18 1S 1T 1d"
+```
+
+### Reverse decode Stage‑2
+
+```
+b76pipe_stream -r -i encoded.txt
+```
+
+### Reverse decode Stage‑1 directly
+
+```
+b76pipe_stream -r --stage1 "18 1S 1T 1d"
+```
+
+### Verbose mode (show Stage‑1 tokens)
+
+```
+b76pipe_stream -v -i message.txt
+```
+
+### Custom alphabet
+
+```
+b76pipe_stream --alpha myalphabet.txt -i message.txt
 ```
 
 ---
 
-## Troubleshooting
+## Stage‑1 Input Mode (`--stage1`)
 
-- **Invalid Base76 character**  
-  Ensure the input uses the same alphabet as the program (default or custom).
+### Forward mode (`--stage1`)
 
-- **Decoded file corrupted**  
-  Compare checksums of original vs decoded.  
-  Ensure output is written in binary mode (`wb`).
+```
+--stage1 "18 1S 1T 1d"
+```
 
-- **Custom alphabet rejected**  
-  Check that the file contains at least 76 unique 7‑bit characters.
+interprets the input as Stage‑1 tokens and converts them to bytes before Stage‑2 encoding.
 
----
+### Reverse mode (`-r --stage1`)
 
-## Credits
+```
+-r --stage1 "18 1S 1T 1d"
+```
 
-**Design, architecture, reference implementation:**  
-Graduate. Damian Williamson  
-Willtech, Swan Hill, Victoria, Australia  
-
-**Implementation, documentation, diagnostic tooling:**  
-Professor. Damian A. James Williamson Grad. + Copilot  
-
-Part of the **Willtech Base76 Pipeline Suite**
+decodes Stage‑1 tokens directly back to bytes.
 
 ---
 
-### License
+## Selftest
+
+Run built‑in selftest:
+
+```
+b76pipe_stream --selftest
+```
+
+Selftest validates:
+
+- Stage‑1 correctness  
+- Stage‑2 correctness  
+- Internal forward/reverse  
+- File‑based forward/reverse  
+
+Success message:
+
+```
+b76pipe_stream self-test Okay.
+```
+
+---
+
+## Alphabet Rules
+
+A valid Base76 alphabet must:
+
+- Contain **exactly 76 unique characters**
+- All characters must be **7‑bit clean**
+- Whitespace is ignored
+- Duplicates are ignored
+- Characters ≥ 128 are ignored
+
+---
+
+## Test Suite
+
+The repository includes a comprehensive test suite validating:
+
+- stdin/stdout  
+- file I/O  
+- Stage‑1 forward  
+- Stage‑1 reverse  
+- Stage‑2 forward  
+- Stage‑2 reverse  
+- verbose mode  
+- custom alphabet  
+- selftest modes  
+- byte‑for‑byte reversibility  
+
+Run:
+
+```
+cd tests
+./test.sh
+```
+
+---
+
+## License
 
 ```
 Willtech Open Technical Artifact License (WOTAL)  
@@ -186,3 +337,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+---
+
+## Status
+
+This implementation is the **canonical reference** for the Base76 7‑bit reversible pipeline as defined in [Base76.spec.md](https://github.com/Willtech/hexdec2Base76/blob/master/pipeline/Base76.spec.md) [Issue #1](https://github.com/Willtech/hexdec2Base76/issues/1).
