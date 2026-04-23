@@ -169,7 +169,79 @@ cmp "$REV1" "$MSG"
 echo "OK"
 
 ###############################################################################
-# 11. Built-in selftest (--selftest)
+# 11. Stage‑1 forward via string (--stage1 "tokens")
+###############################################################################
+echo "[11] Stage‑1 forward via string"
+
+# Generate Stage‑1 tokens from the message
+$BIN -v -i "$MSG" > /dev/null 2> "$STAGE1"
+
+# Now feed those tokens back using --stage1
+$BIN --stage1 "$(cat "$STAGE1")" > "$OUT1"
+
+# Compare with normal forward output
+$BIN -i "$MSG" > "$OUT2"
+
+cmp "$OUT1" "$OUT2"
+
+echo "OK"
+
+###############################################################################
+# 12. Stage‑1 forward via -i file (--stage1 -i stage1.txt)
+###############################################################################
+echo "[12] Stage‑1 forward via -i file"
+
+# Save Stage‑1 tokens to file
+cp "$STAGE1" "$STAGE1.txt"
+
+$BIN --stage1 -i "$STAGE1.txt" > "$OUT1"
+$BIN -i "$MSG" > "$OUT2"
+
+cmp "$OUT1" "$OUT2"
+
+echo "OK"
+
+###############################################################################
+# 13. Stage‑1 forward via stdin (--stage1 -i -)
+###############################################################################
+echo "[13] Stage‑1 forward via stdin"
+
+cat "$STAGE1" | $BIN --stage1 -i - > "$OUT1"
+$BIN -i "$MSG" > "$OUT2"
+
+cmp "$OUT1" "$OUT2"
+
+echo "OK"
+
+###############################################################################
+# 14. Stage‑1 + verbose (should re‑emit Stage‑1 tokens)
+###############################################################################
+echo "[14] Stage‑1 + verbose"
+
+$BIN --stage1 -v -i "$STAGE1.txt" > "$OUT1" 2> "$STAGE1B"
+
+# Stage‑1B should match original Stage‑1 tokens
+cmp "$STAGE1B" "$STAGE1"
+
+echo "OK"
+
+###############################################################################
+# 15. Stage‑1 reversibility
+###############################################################################
+echo "[15] Stage‑1 reversibility"
+
+# Forward using Stage‑1
+$BIN --stage1 -i "$STAGE1.txt" > "$OUT1"
+
+# Reverse back to bytes
+$BIN -r -i "$OUT1" > "$REV1"
+
+cmp "$REV1" "$MSG"
+
+echo "OK"
+
+###############################################################################
+# 16. Built-in selftest (--selftest)
 ###############################################################################
 echo "[11] Built-in selftest (--selftest)"
 
@@ -195,7 +267,7 @@ fi
 echo "OK"
 
 ###############################################################################
-# 12. Selftest with custom string (--selftest \"string\")
+# 17. Selftest with custom string (--selftest \"string\")
 ###############################################################################
 echo "[12] Selftest with custom string"
 
@@ -215,7 +287,7 @@ fi
 echo "OK"
 
 ###############################################################################
-# 13. Selftest with custom file (--selftest -i file)
+# 18. Selftest with custom file (--selftest -i file)
 ###############################################################################
 echo "[13] Selftest with custom file"
 
@@ -237,7 +309,7 @@ fi
 echo "OK"
 
 ###############################################################################
-# 14. Selftest error case: string + file → error
+# 19. Selftest error case: string + file → error
 ###############################################################################
 echo "[14] Selftest error case (string + file)"
 
@@ -254,7 +326,7 @@ fi
 echo "OK"
 
 ###############################################################################
-# 15. Selftest combined with normal operation (--selftest -i -o)
+# 20. Selftest combined with normal operation (--selftest -i -o)
 ###############################################################################
 echo "[15] Selftest combined with normal operation"
 
@@ -274,7 +346,7 @@ cmp "./combined_rev.txt" "$MSG"
 echo "OK"
 
 ###############################################################################
-# 16. Summary
+# 21. Summary
 ###############################################################################
 echo "=============================================="
 echo " All tests PASSED successfully."

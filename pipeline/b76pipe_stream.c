@@ -8,11 +8,15 @@
  *   Graduate. Damian Williamson (Willtech)
  *
  * Implementation, documentation and extended diagnostic tooling:
- *   Professor Damian A. James Williamson + Copilot
+ *   Professor Damian A. James Williamson Grad. + Copilot
  *
  * This program provides a fully reversible Base76 7‑bit pipeline encoder/
  * decoder with strict alphabet validation, deterministic forward/reverse
  * semantics, and a comprehensive internal selftest facility.
+ *
+ * Stage 1 Input mode:
+ *   --stage1
+ *       Use Input in Stage 1 form.
  *
  * Selftest modes:
  *   --selftest
@@ -390,6 +394,12 @@ usage(const char *prog)
         "  -v               Verbose mode: print Stage‑1 Base76 tokens to stderr\n"
         "  -r               Reverse mode (decode)\n"
         "\n"
+        "  --stage1 [s]     Treat input as Stage‑1 tokens instead of raw bytes.\n"
+        "                   Forms:\n"
+        "                     --stage1 \"18 1S 1T 1d\"\n"
+        "                     --stage1 -i <file>\n"
+        "                     --stage1 -i -\n"
+        "\n"
         "  --alpha <file>   Load custom Base76 alphabet.\n"
         "                   Rules:\n"
         "                     • First 76 unique 7‑bit characters are used\n"
@@ -398,24 +408,18 @@ usage(const char *prog)
         "                     • Characters >= 128 are ignored\n"
         "                     • Error if fewer than 76 unique chars\n"
         "\n"
+        "  --stage1 [s]     Treat input as Stage‑1 Base76 tokens.\n"
+        "                   Forms:\n"
+        "                     --stage1 \"18 1S 1T 1d\"\n"
+        "                     --stage1 -i <file>\n"
+        "                     --stage1 -i -\n"
+        "\n"
         "  --selftest [s]   Run internal forward/reverse validation.\n"
         "                   Modes:\n"
         "                     --selftest\n"
-        "                        Use built‑in diagnostic message and exit.\n"
-        "\n"
         "                     --selftest \"string\"\n"
-        "                        Use provided string and exit.\n"
-        "\n"
         "                     --selftest -i <file>\n"
-        "                        Use contents of <file> and exit.\n"
-        "\n"
         "                     --selftest -i <file> -o <file>\n"
-        "                        Run selftest, then forward‑encode input to <outfile>,\n"
-        "                        reverse‑decode <outfile>, compare to original, then exit.\n"
-        "\n"
-        "                   Notes:\n"
-        "                     • Selftest always exits after completion.\n"
-        "                     • It is an error to specify both a string and -i file.\n"
         "\n"
         "  -h, --help       Show this help\n"
         "  --version        Show program version\n",
@@ -568,7 +572,6 @@ run_selftest(const unsigned char *data, size_t len)
         free(b76_1); free(bits); free(enc); free(ascii01); free(b76_back); free(dec1);
         exit(1);
     }
-
     /* ---------- Reverse from file .o ---------- */
     size_t enc_file_len = 0;
     unsigned char *enc_file = NULL;
@@ -585,7 +588,8 @@ run_selftest(const unsigned char *data, size_t len)
     }
 
     char *ascii01_f = malloc(enc_file_len + 1);
-    if (!ascii01_f) { perror("malloc"); free(b76_1); free(bits); free(enc); free(ascii01); free(b76_back); free(dec1); free(enc_file); exit(1); }
+    if (!ascii01_f) { perror("malloc"); free(b76_1); free(bits); free(enc); free(ascii01);
+                      free(b76_back); free(dec1); free(enc_file); exit(1); }
     size_t a_f_len = 0;
 
     for (size_t i = 0; i < enc_file_len; i++) {
@@ -603,7 +607,8 @@ run_selftest(const unsigned char *data, size_t len)
     ascii01_f[a_f_len] = '\0';
 
     char *b76_back_f = malloc(a_f_len / 7 + 2);
-    if (!b76_back_f) { perror("malloc"); free(b76_1); free(bits); free(enc); free(ascii01); free(b76_back); free(dec1); free(enc_file); free(ascii01_f); exit(1); }
+    if (!b76_back_f) { perror("malloc"); free(b76_1); free(bits); free(enc); free(ascii01);
+                       free(b76_back); free(dec1); free(enc_file); free(ascii01_f); exit(1); }
     size_t b76_back_f_len = 0;
     pos = 0;
 
@@ -693,7 +698,8 @@ forward_encode_buffer_to_file(const unsigned char *input, size_t input_len,
         if (out_len + l + 1 >= out_cap) {
             out_cap = (out_len + l + 1) * 2;
             outbuf = realloc(outbuf, out_cap);
-            if (!outbuf) { perror("realloc"); free(b76); free(bits); free(b76_1); free(outbuf); fclose(outf); exit(1); }
+            if (!outbuf) { perror("realloc"); free(b76); free(bits); free(b76_1);
+                           free(outbuf); fclose(outf); exit(1); }
         }
         memcpy(outbuf + out_len, b76, l);
         out_len += l;
@@ -788,6 +794,56 @@ reverse_decode_file_to_buffer(const char *infile_path, size_t *out_len)
 }
 
 /*==============================================================================
+ * Stage‑1 parser: Base76 tokens → bytes
+ *============================================================================*/
+
+static unsigned char *
+stage1_to_bytes(const unsigned char *input, size_t len, size_t *out_len)
+{
+    unsigned char *out = malloc(len + 1);
+    if (!out) { perror("malloc"); exit(1); }
+
+    size_t outpos = 0;
+    size_t i = 0;
+
+    while (i < len) {
+        while (i < len && isspace(input[i]))
+            i++;
+
+        if (i >= len)
+            break;
+
+        unsigned int val = 0;
+        int digits = 0;
+
+        while (i < len && !isspace(input[i])) {
+            unsigned char c = input[i];
+            int idx = base76_char_to_index(c);
+            val = val * 76 + idx;
+            digits++;
+            i++;
+        }
+
+        if (digits == 0) {
+            fprintf(stderr, "Invalid Stage‑1 token: empty token\n");
+            free(out);
+            exit(1);
+        }
+
+        if (val > 255) {
+            fprintf(stderr, "Invalid Stage‑1 token: value %u out of byte range\n", val);
+            free(out);
+            exit(1);
+        }
+
+        out[outpos++] = (unsigned char)val;
+    }
+
+    *out_len = outpos;
+    return out;
+}
+
+/*==============================================================================
  * Main
  *============================================================================*/
 
@@ -803,6 +859,9 @@ main(int argc, char **argv)
 
     int selftest = 0;
     const char *selftest_str = NULL;
+
+    int stage1 = 0;
+    const char *stage1_str = NULL;
 
     init_default_alphabet();
 
@@ -828,6 +887,14 @@ main(int argc, char **argv)
             selftest = 1;
             if (i + 1 < argc && argv[i + 1][0] != '-') {
                 selftest_str = argv[i + 1];
+                i++;
+            }
+            continue;
+        }
+        if (strcmp(argv[i], "--stage1") == 0) {
+            stage1 = 1;
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                stage1_str = argv[i + 1];
                 i++;
             }
             continue;
@@ -866,6 +933,12 @@ main(int argc, char **argv)
             }
             continue;
         }
+        if (strcmp(argv[i], "--stage1") == 0) {
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                i++;
+            }
+            continue;
+        }
         if (strcmp(argv[i], "--help") == 0 ||
             strcmp(argv[i], "--version") == 0) {
             continue;
@@ -895,79 +968,122 @@ main(int argc, char **argv)
         return 1;
     }
 
-    /*==========================
-     * PURE SELFTEST MODES ONLY
-     *==========================*/
+/*==========================
+ * PURE SELFTEST MODES ONLY
+ *==========================*/
 
-    if (selftest) {
-        unsigned char *st_data = NULL;
-        size_t st_len = 0;
+if (selftest) {
+    unsigned char *st_data = NULL;
+    size_t st_len = 0;
 
-        if (infile) {
-            int fd;
-            if (strcmp(infile, "-") == 0)
-                fd = STDIN_FILENO;
-            else {
-                fd = open(infile, O_RDONLY);
-                if (fd < 0) {
-                    fprintf(stderr, "Error opening '%s': %s\n",
-                            infile, strerror(errno));
-                    free(new_argv);
-                    exit(1);
-                }
-            }
-            st_data = read_all_fd(fd, &st_len);
-            if (fd != STDIN_FILENO)
-                close(fd);
-        } else if (selftest_str) {
-            st_len = strlen(selftest_str);
-            st_data = malloc(st_len ? st_len : 1);
-            if (!st_data) { perror("malloc"); free(new_argv); exit(1); }
-            if (st_len)
-                memcpy(st_data, selftest_str, st_len);
-        } else {
-            const char *def = "This is a b76pipe_stream self-test message.";
-            st_len = strlen(def);
-            st_data = malloc(st_len);
-            if (!st_data) { perror("malloc"); free(new_argv); exit(1); }
-            memcpy(st_data, def, st_len);
-        }
+    /*
+     * Input selection for selftest:
+     *
+     * 1. --selftest -i file
+     *      → read file (or stdin if "-")
+     *
+     * 2. --selftest "string"
+     *      → use provided string
+     *
+     * 3. --selftest
+     *      → use built‑in diagnostic message
+     *
+     * NOTE:
+     *   --stage1 is intentionally ignored in selftest mode.
+     *   Selftest always operates on raw bytes.
+     */
 
-        /* Core selftest (writes .i and .o, internal fwd/rev checks) */
-        run_selftest(st_data, st_len);
-
-        /* Special case: --selftest -i file -o file
-         *   After selftest, also:
-         *     - forward encode input to outfile
-         *     - reverse decode outfile
-         *     - compare to original
-         */
-        if (infile && outfile) {
-            forward_encode_buffer_to_file(st_data, st_len, outfile);
-
-            size_t rev_len = 0;
-            unsigned char *rev_buf = reverse_decode_file_to_buffer(outfile, &rev_len);
-
-            if (rev_len != st_len || memcmp(rev_buf, st_data, st_len) != 0) {
+    if (infile) {
+        int fd;
+        if (strcmp(infile, "-") == 0)
+            fd = STDIN_FILENO;
+        else {
+            fd = open(infile, O_RDONLY);
+            if (fd < 0) {
                 fprintf(stderr,
-                        "Self-test FAILED: --selftest -i %s -o %s forward/reverse mismatch.\n",
-                        infile, outfile);
-                free(rev_buf);
-                free(st_data);
+                        "Error opening '%s': %s\n",
+                        infile, strerror(errno));
                 free(new_argv);
-                return 1;
+                exit(1);
             }
-
-            free(rev_buf);
         }
 
-        free(st_data);
-        free(new_argv);
-        return 0;
+        st_data = read_all_fd(fd, &st_len);
+        if (fd != STDIN_FILENO)
+            close(fd);
+
+    } else if (selftest_str) {
+        st_len = strlen(selftest_str);
+        st_data = malloc(st_len ? st_len : 1);
+        if (!st_data) {
+            perror("malloc");
+            free(new_argv);
+            exit(1);
+        }
+        if (st_len)
+            memcpy(st_data, selftest_str, st_len);
+
+    } else {
+        const char *def = "This is a b76pipe_stream self-test message.";
+        st_len = strlen(def);
+        st_data = malloc(st_len);
+        if (!st_data) {
+            perror("malloc");
+            free(new_argv);
+            exit(1);
+        }
+        memcpy(st_data, def, st_len);
     }
 
+    /*
+     * Core selftest:
+     *   - writes .i and .o
+     *   - internal forward/reverse
+     *   - file-based reverse
+     *   - validates both paths
+     */
+    run_selftest(st_data, st_len);
+
+    /*
+     * Extended mode:
+     *   --selftest -i file -o file
+     *
+     * After the internal selftest succeeds:
+     *   - forward encode input to outfile
+     *   - reverse decode outfile
+     *   - compare to original
+     */
+    if (infile && outfile) {
+        forward_encode_buffer_to_file(st_data, st_len, outfile);
+
+        size_t rev_len = 0;
+        unsigned char *rev_buf =
+            reverse_decode_file_to_buffer(outfile, &rev_len);
+
+        if (rev_len != st_len ||
+            memcmp(rev_buf, st_data, st_len) != 0) {
+
+            fprintf(stderr,
+                    "Self-test FAILED: --selftest -i %s -o %s "
+                    "forward/reverse mismatch.\n",
+                    infile, outfile);
+
+            free(rev_buf);
+            free(st_data);
+            free(new_argv);
+            return 1;
+        }
+
+        free(rev_buf);
+    }
+
+    free(st_data);
+    free(new_argv);
+    return 0;
+}
+
     /*==========================
-     * NORMAL PIPELINE MODES
+     * NORMAL PIPELINE MODES (with --stage1 support)
      *==========================*/
 
     unsigned char *input = NULL;
@@ -988,7 +1104,15 @@ main(int argc, char **argv)
         input = read_all_fd(fd, &input_len);
         if (fd != STDIN_FILENO)
             close(fd);
-    } else if (msg_argc > 0) {
+    } else if (stage1 && stage1_str) {
+         /* --stage1 "18 1S 1T 1d" */
+         input_len = strlen(stage1_str);
+         input = malloc(input_len ? input_len : 1);
+         if (!input) { perror("malloc"); free(new_argv); exit(1); }
+         if (input_len)
+             memcpy(input, stage1_str, input_len);
+ 
+     } else if (msg_argc > 0) {
         size_t total = 0;
         for (int i = 0; i < msg_argc; i++) {
             total += strlen(msg_argv[i]);
@@ -1019,9 +1143,23 @@ main(int argc, char **argv)
         }
     }
 
+     /* Stage‑1 input mode: convert tokens → bytes before forward pipeline */
+     if (stage1 && !reverse) {
+         size_t s_len = 0;
+         unsigned char *s_bytes = stage1_to_bytes(input, input_len, &s_len);
+         free(input);
+         input = s_bytes;
+         input_len = s_len;
+     }
+
     if (!reverse) {
         if (verbose)
             print_stage1_tokens_from_ascii_stderr(input, input_len);
+
+         /* Reverse mode unchanged by --stage1:
+          *   --stage1 is accepted but ignored in reverse mode.
+          *   Output is raw ASCII bytes as usual.
+          */
 
         char *b76_1 = bytes_to_base76(input, input_len);
         size_t b76_len = strlen(b76_1);
@@ -1140,3 +1278,4 @@ main(int argc, char **argv)
     free(new_argv);
     return 0;
 }
+
