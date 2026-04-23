@@ -1204,6 +1204,33 @@ if (selftest) {
         free(bits);
         free(outbuf);
     } else {
+
+        /*==============================================================
+         * Reverse mode with --stage1:
+         *   Decode Stage‑1 tokens directly back to bytes.
+         *   This bypasses Stage‑2 decoding entirely.
+         *==============================================================*/
+        if (stage1) {
+            size_t s_len = 0;
+            unsigned char *s_bytes = stage1_to_bytes(input, input_len, &s_len);
+
+            if (verbose)
+                print_stage1_tokens_from_ascii_stderr(s_bytes, s_len);
+
+            fwrite(s_bytes, 1, s_len, outf);
+
+            free(s_bytes);
+            free(new_argv);
+            free(input);
+            if (outfile)
+                fclose(outf);
+            return 0;
+        }
+
+        /*==============================================================
+         * Normal Stage‑2 reverse pipeline
+         *==============================================================*/
+
         char *encoded = malloc(input_len + 1);
         if (!encoded) { perror("malloc"); free(new_argv); free(input); exit(1); }
         memcpy(encoded, input, input_len);
