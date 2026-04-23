@@ -39,8 +39,9 @@ The Willtech Base76 Pipeline Suite provides a **fully reversible**, **stream‑s
   </a>
   
   <!-- Version -->
-  <img src="https://img.shields.io/badge/version-1.0.0.2026.04.15-yellow.svg" alt="Version">
-
+  <a href="https://github.com/Willtech/hexdec2Base76/releases/tag/V1.0.0.2026.04.15">
+    <img src="https://img.shields.io/badge/version-1.0.0.2026.04.15-yellow.svg" alt="Version">
+  </a>
 </p>
 
 
