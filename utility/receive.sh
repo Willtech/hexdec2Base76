@@ -20,3 +20,6 @@ echo "==> Final integrity check..."
 grep "random.bin" SHA256.SUM | sha256 -c
 
 echo "Success: random.bin is ready."
+
+##REL>>>
+# https://share.google/aimode/cgzNbejrTsVc4Onym
