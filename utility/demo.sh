@@ -35,7 +35,7 @@ if [ -z "$FILENAME" ]; then
     echo "ERROR: No file found in send/ (other than SHA256.SUM). Continuing anyway."
 else
     echo "Detected filename: $FILENAME"
-
+    FILENAME=$(echo "$FILENAME" | sed 's/ /\\\\ /g')
     echo "[3/7] Patching send.sh and receive.sh (random.bin → $FILENAME)"
     sed -i "s/random\.bin/$FILENAME/g" send.sh      || echo "sed failed on send.sh"
     sed -i "s/random\.bin/$FILENAME/g" receive.sh   || echo "sed failed on receive.sh"
