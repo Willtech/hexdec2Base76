@@ -1,9 +1,29 @@
 #!/bin/ksh
-
+#
 # demo.sh — automated send/transfer/receive pipeline
+# Part of the Base76 Pipeline Suite demonstration utilities.
+#
+# AUTHOR
+#     Graduate. Damian Williamson. 
+#.     — Willtech, Swan Hill, Victoria, Australia.
+#
+# CREDITS
+#     Microsoft Copilot — technical collaboration, commentary, and pipeline
+#     design assistance.
+#
+# This script:
+#   1. Runs cleanup.sh
+#   2. Detects the input filename from send/ (excluding SHA256.SUM)
+#   3. Patches send.sh and receive.sh to use that filename
+#   4. Runs send.sh
+#   5. Runs transfer.sh
+#   6. Runs receive.sh
+#   7. Restores original scripts from bak/
+#
 # Runs from ./utility/ and must not exit on error.
+#
 
-set +e   # ensure the script NEVER exits on error
+set +e   # never exit on error
 
 echo "[1/7] Running cleanup.sh"
 ./cleanup.sh || echo "cleanup.sh failed (continuing)"
@@ -15,14 +35,10 @@ if [ -z "$FILENAME" ]; then
     echo "ERROR: No file found in send/ (other than SHA256.SUM). Continuing anyway."
 else
     echo "Detected filename: $FILENAME"
-fi
 
-echo "[3/7] Patching send.sh and receive.sh (random.bin → $FILENAME)"
-if [ -n "$FILENAME" ]; then
+    echo "[3/7] Patching send.sh and receive.sh (random.bin → $FILENAME)"
     sed -i "s/random\.bin/$FILENAME/g" send.sh      || echo "sed failed on send.sh"
     sed -i "s/random\.bin/$FILENAME/g" receive.sh   || echo "sed failed on receive.sh"
-else
-    echo "Skipping sed replacement because no filename was detected."
 fi
 
 echo "[4/7] Running send.sh"
