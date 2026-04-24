@@ -2,7 +2,7 @@
 # Exit immediately if any command returns a non-zero status
 set -e
 
-mkdir receive
+mkdir -p receive 2>&1
 cd receive
 
 echo "==> Verifying encoded chunks..."
